@@ -10,6 +10,8 @@
     <Authors>Joshua Hudson &lt;joshudson@gmail.com&gt;</Authors>
     <Copyright>2018</Copyright>
     <Description>Replacement File Information APIs for .NET Core supporting symbolic links</Description>
+    <PackageLicenseUrl>https://raw.githubusercontent.com/joshudson/Emet/master/LICENSE</PackageLicenseUrl>
+    <PackageProjectUrl>PackageProjectUrl</PackageProjectUrl>
   </PropertyGroup>
 
   <ItemGroup>
