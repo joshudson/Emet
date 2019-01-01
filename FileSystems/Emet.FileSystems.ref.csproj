@@ -1,0 +1,11 @@
+<Project Sdk="MSBuild.Sdk.Extras">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard1.6</TargetFramework>
+    <NoWarn>0414</NoWarn>
+    <DebugType>None</DebugType>
+    <VersionPrefix>0.0.1</VersionPrefix>
+    <VersionSuffix>alpha1</VersionSuffix>
+  </PropertyGroup>
+
+</Project>

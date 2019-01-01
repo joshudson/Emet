@@ -1,0 +1,24 @@
+<Project Sdk="MSBuild.Sdk.Extras">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard1.6</TargetFrameworks>
+    <RuntimeIdentifiers>linux-x64;win;osx-x64</RuntimeIdentifiers>
+    <ExtrasBuildEachRuntimeIdentifier>true</ExtrasBuildEachRuntimeIdentifier>
+    <DebugType>None</DebugType>
+    <VersionPrefix>0.0.1</VersionPrefix>
+    <VersionSuffix>alpha1</VersionSuffix>
+    <Authors>Joshua Hudson &lt;joshudson@gmail.com&gt;</Authors>
+    <Copyright>2018</Copyright>
+    <Description>Replacement File Information APIs for .NET Core supporting symbolic links</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ReferenceAssemblyProjectReference Include="Emet.FileSystems.ref.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <DefineConstants Condition="'$(RuntimeIdentifier)'=='win'">$(DefineConstants);OS_WIN</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeIdentifier)'=='linux-x64'">$(DefineConstants);OS_LINUXX64;OS_FEATURES_DTYPE;OSTYPE_UNIX</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeIdentifier)'=='osx-x64'">$(DefineConstants);OS_MACOSX64;OS_FEATURES_DTYPE;OSTYPE_UNIX</DefineConstants>
+  </PropertyGroup>
+</Project>
