@@ -30,6 +30,10 @@ The typical entry point is `Emet.FileSystems.FileSystem` where useful functions
 and `RenameReplace()` are found. It is also possible to examine a path directly
 by creating an `Emet.FileSystems.DirectoryEntry` object.
 
+There is copious documentation. The best way to read the documentation is to
+add Emet.FileSystems to a project in Visual Studio and use Object Browser to
+browse the public API and XML comments.
+
 Individual IO errors may be caught and handled independently by writing code that
 looks like this:
 
