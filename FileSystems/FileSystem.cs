@@ -212,6 +212,8 @@ namespace Emet.FileSystems {
 				else if (hint != FileType.File)
 					throw new PlatformNotSupportedException("Windows can't handle symbolic links to file system nodes that don't exist.");
 			}
+			if (targethint == FileType.Directory)
+				flags = NativeMethods.SYMBOLIC_LINK_FLAG_DIRECTORY;
 			if (0 == NativeMethods.CreateSymbolicLinkW(linkpath, targetpath, flags)) {
 				var errno = (int)Marshal.GetLastWin32Error();
 				if (errno == 1314) {
