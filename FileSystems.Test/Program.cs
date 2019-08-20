@@ -31,8 +31,7 @@ static class Program {
 					FileSystem.CreateSymbolicLink("dir2", Path.Combine(testpath, "symlink2"));
 				});
 			RunSomeTest("Testing ReadLink", () => {
-					AssertAreEqual(GetFullPath(testpath, "file1"),
-							GetFullPath(testpath, FileSystem.ReadLink(Path.Combine(testpath, "symlink1"))));
+					AssertAreEqual("file1", FileSystem.ReadLink(Path.Combine(testpath, "symlink1")));
 				});
 			RunSomeTest("Creating hard link to file", () => {
 					FileSystem.CreateHardLink(Path.Combine(testpath, "file1"), Path.Combine(testpath, "link1"));

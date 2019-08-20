@@ -200,19 +200,20 @@ namespace Emet.FileSystems {
 #elif OS_WIN
 			uint flags = 0;
 			if (targethint != FileType.File && targethint != FileType.Directory) {
-				if (!Path.IsPathRooted(targetpath)) {
+				var xreftargetpath = targetpath;
+				if (!Path.IsPathRooted(xreftargetpath)) { // Resolve a copy of target path using symlink location as root
 					var ldname = Path.GetDirectoryName(linkpath);
 					if (string.IsNullOrEmpty(ldname)) ldname = DirectoryEntry.CurrentDirectoryName;
-					targetpath = Path.Combine(ldname, targetpath);
+					xreftargetpath = Path.Combine(ldname, targetpath);
 				}
-				var node = new DirectoryEntry(targetpath, FollowSymbolicLinks.Never);
+				var node = new DirectoryEntry(xreftargetpath, FollowSymbolicLinks.Never);
 				var hint = (node.FileType == FileType.SymbolicLink) ? node.LinkTargetHint : node.FileType;
 				if (hint == FileType.Directory)
 					flags = NativeMethods.SYMBOLIC_LINK_FLAG_DIRECTORY;
 				else if (hint != FileType.File)
 					throw new PlatformNotSupportedException("Windows can't handle symbolic links to file system nodes that don't exist.");
 			}
-			if (targethint == FileType.Directory)
+			else if (targethint == FileType.Directory)
 				flags = NativeMethods.SYMBOLIC_LINK_FLAG_DIRECTORY;
 			if (0 == NativeMethods.CreateSymbolicLinkW(linkpath, targetpath, flags)) {
 				var errno = (int)Marshal.GetLastWin32Error();
@@ -388,7 +389,7 @@ namespace Emet.FileSystems {
 		// List of DirectoryEntiry; this class actually exists so that callers don't take a dependency on downcasting
 		// IEnumerable<DirectoryEntry> to List<DirectoryEntry>.  I've switched back and forth between yield return and
 		// list more than once.
-    private class DirectoryEntryList : IEnumerable<DirectoryEntry> {
+		private class DirectoryEntryList : IEnumerable<DirectoryEntry> {
 			private int clist;
 			private int alist;
 			private DirectoryEntry[] list;
