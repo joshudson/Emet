@@ -6,12 +6,12 @@
     <ExtrasBuildEachRuntimeIdentifier>true</ExtrasBuildEachRuntimeIdentifier>
     <DebugType>None</DebugType>
     <VersionPrefix>0.0.1</VersionPrefix>
-    <VersionSuffix>alpha1</VersionSuffix>
+    <VersionSuffix>alpha2</VersionSuffix>
     <Authors>Joshua Hudson &lt;joshudson@gmail.com&gt;</Authors>
-    <Copyright>2018</Copyright>
+    <Copyright>2018-2019</Copyright>
     <Description>Replacement File Information APIs for .NET Core supporting symbolic links</Description>
     <PackageLicenseUrl>https://raw.githubusercontent.com/joshudson/Emet/master/LICENSE</PackageLicenseUrl>
-    <PackageProjectUrl>PackageProjectUrl</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/joshudson/Emet</PackageProjectUrl>
   </PropertyGroup>
 
   <ItemGroup>

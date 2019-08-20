@@ -5,7 +5,7 @@
     <NoWarn>0414</NoWarn>
     <DebugType>None</DebugType>
     <VersionPrefix>0.0.1</VersionPrefix>
-    <VersionSuffix>alpha1</VersionSuffix>
+    <VersionSuffix>alpha2</VersionSuffix>
   </PropertyGroup>
 
 </Project>
