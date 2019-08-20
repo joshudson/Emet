@@ -182,7 +182,8 @@ namespace Emet.FileSystems {
 			errno = NativeMethods.NtQueryVolumeInformationFile(handle, out io, out volume,
 					Marshal.SizeOf<NativeMethods.FILE_FS_VOLUME_INFORMATION>(), NativeMethods.FileFsVolumeInformation);
 			if (errno != 0) errno = NativeMethods.RtlNtStatusToDosError(errno);
-			if (errno != 0 && errno != (IOErrors.InsufficientBuffer & 0xFFFF)) {
+			if (errno != 0 && errno != (IOErrors.InsufficientBuffer & 0xFFFF) && errno != IOErrors.ERROR_MORE_DATA) {
+Console.WriteLine(errno);
 				NativeMethods.SetLastError(errno);
 				var ci = new System.ComponentModel.Win32Exception();
 				throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
