@@ -10,13 +10,20 @@ using System.Runtime.InteropServices;
 using Encoding = System.Text.Encoding;
 
 namespace Emet.FileSystems {
+	///<summary>FileSystem contains static methods and properties for working with file systems</summary>
 	public static class FileSystem {
+		///<summary>Behavior for when enumerating the contents of a non-extant directory</summary>
 		public enum NonExtantDirectoryBehavior : byte {
+			///<summary>throw new DirectoryNotFoundException();</summary>
 			Throw = 0,
+			///<summary>return an enumerable with no items</summary>
 			ReturnEmpty = 1,
+			///<summary>return null</summary>
+			///<remarks>this mode offers maximum performance if caller is expecting to handle it not being present</remarks>
 			ReturnNull = 2,
 		}
 
+		///<summary>Behavior for what to do when encountering symbolic links</summary>
 		public enum FollowSymbolicLinks : byte {
 			///<summary>Never follow symbolic links</summary>
 			Never = 0,
@@ -24,7 +31,7 @@ namespace Emet.FileSystems {
 			///<remarks>If the link is broken the DirectoryEntry object might not be fully populated,
 			///but FileType will be SymbolicLink</remarks>
 			Always = 1,
-			///<summary>Follow symbolic links if target is directory</summary>
+			///<summary>Follow symbolic links if target is not a directory</summary>
 			///<remarks>If the link is broken the DirectoryEntry object might not be fully populated,
 			///but FileType will be SymbolicLink and LinkTargetHint will not be Directory.</remarks>
 			IfNotDirectory = 2,
@@ -33,7 +40,7 @@ namespace Emet.FileSystems {
 		///<summary>Gets the contents of a directory</summary>
 		///<param name="path">path to enumerate</param>
 		///<param name="nonExtantDirectoryBehavior">What to do if the directory doesn't exist</param>
-		///<param name="followSymbolicLinks">Whether or not to follow symbolic links</exception>
+		///<param name="followSymbolicLinks">Whether or not to follow symbolic links</param>
 		///<exception cref="System.IO.IOException">An IO error occurred accessing path</exception>
 		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes</remarks>
 		public static IEnumerable<DirectoryEntry> GetDirectoryContents(string path,

@@ -43,7 +43,7 @@ public class DirectoryEntry : FileSystemNode {
 			this.type = type;
 			this.hint = hint;
 			if (type == FileType.SymbolicLink && symbolic != FileSystem.FollowSymbolicLinks.Never)
-				this.type = FileType.NodeHintNotAvailable;
+				this.type = FileType.NodeHintNotAvailable; // Forces resolution on accessing FileType
 		}
 
 #if OS_WIN
@@ -116,6 +116,8 @@ public class DirectoryEntry : FileSystemNode {
 		///<summary>Gets the type of the symbolic link target</summary>
 		public FileType LinkTargetType => (hint == FileType.LinkTargetHintNotAvailable) ? LinkTarget.FileType : hint;
 
+		///<summary>Gets a file system node traverses the link</summary>
+		///<remarks>returns this if the node is not a symbolic link</remarks>
 		public FileSystemNode LinkTarget {
 			get {
 				if (FileType != FileType.SymbolicLink) return this;
@@ -131,6 +133,8 @@ public class DirectoryEntry : FileSystemNode {
 					// Passing the hint through happens to do the right thing on all platforms
 					hint == FileType.LinkTargetHintNotAvailable ? FileType.NodeHintNotAvailable : hint, FileType.LinkTargetHintNotAvailable);
 
+		///<summary>Reloads the file node information</summary>
+		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
 		protected override void _Refresh()
 		{
 #if OSTYPE_UNIX

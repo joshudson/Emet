@@ -7,21 +7,35 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
 namespace Emet.FileSystems {
+	///<summary>Type of file system node</summary>
 	public enum FileType : int {
+		///<summary>non-extent file</summary>
 		DoesNotExist = 0,
+		///<summary>FIFO (old-school named pipe) file system node</summary>
 		Fifo = 0b1_000_000_000_000,
+		///<summary>character device</summary>
 		CharacterSpecial = 0b10_000_000_000_000,
+		///<summary>directory</summary>
 		Directory = 0b100_000_000_000_000,
+		///<summary>block device (usually a disk)</summary>
 		BlockSpecial = 0b110_000_000_000_000,
+		///<summary>regular file; open with new FileStream</summary>
 		File = 0b1_000_000_000_000_000,
+		///<summary>Symbolic link</summary>
 		SymbolicLink = 0b1_010_000_000_000_000,
+		///<summary>socket (usually a unix domain socket)</summary>
 		Socket = 0b1_100_000_000_000_000,
+		///<summary>only visible via reflection--a node hint was not provided; use the FileType property to get the file type</summary>
 		NodeHintNotAvailable = 0x10000,
+		///<summary>a link hint was not provided; resolve the link the file type</summary>
 		LinkTargetHintNotAvailable = 0x20000,
+		///<summary>named pipe file system node</summary>
 		NamedPipe = 0x40000,
+		///<summary>Windows reparse point but not a symbolic link</summary>
 		ReparsePoint = 0x80000
 	}
 
+	///<summary>Describes a filesystem object</summary>
 	public class FileSystemNode {
     // These are not const in case we have to port to something that uses something else.
     ///<summary>Name of the current directory within itself</summary>
@@ -38,6 +52,7 @@ namespace Emet.FileSystems {
 		public FileSystemNode(SafeFileHandle handle)
 		{
 			reference = handle;
+			fileType = FileType.NodeHintNotAvailable;
 		}
 
 		///<summary>Reloads the file node information</summary>
@@ -45,8 +60,12 @@ namespace Emet.FileSystems {
 		///<returns>this</returns>
 		public FileSystemNode Refresh() { _Refresh(); return this; }
 
+		///<summary>Reloads the file node information</summary>
+		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
 		protected virtual void _Refresh() => _Refresh(reference);
 
+		///<summary>Reloads the file node information using the provided handle</summary>
+		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
 		protected void _Refresh(SafeFileHandle handle)
 		{
 			bool success = false;
@@ -358,7 +377,7 @@ Console.WriteLine(errno);
 #else
 		///<summary>Returns the secure last change time, if available</summary>
 		///<remarks>If the filesystem doesn't support it, returns whatever fake result the filesystem driver provided;
-		///however if the OS doesn't support it it returns ctime</remakrs>
+		///however if the OS doesn't support it it returns ctime</remarks>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
 		public DateTime CreationTimeUTC => throw null;
 #endif

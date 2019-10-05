@@ -4,7 +4,9 @@
 using System;
 
 namespace Emet.FileSystems {
+	///<summary>List of I/O errors</summary>
 	public static class IOErrors {
+		///<summary>Contains a file handle that cannot occur for use as a sentinal value</summary>
 		public static readonly IntPtr InvalidFileHandle = new IntPtr(-1);
 		///<summary>Oops; got an error but we don't know what it was</summary>
 		public static readonly int Success = 0;
