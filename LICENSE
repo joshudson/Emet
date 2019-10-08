@@ -14,3 +14,14 @@ which is not derived from or based on this library. If you modify this library,
 you may extend this exception to your version of the library, but you are not
 obligated to do so. If you do not wish to do so, delete this exception
 statement from your version.
+
+In addition, binaries with stable version numbers (no -alpha, -beta, or CI
+binaries) released by the author are also released with the the GCC Exception
+version 2.0 added to the license:
+
+In addition to the permissions in the License, the author(s) gives you
+unlimited permission to link the compiled version of this file into
+combinations with other programs, and to distribute those programs without any
+restriction coming from the use of this file. (The General Public License
+restrictions do apply in other respects; for example, they cover modification
+of the file, and distribution when not linked into another program .)
