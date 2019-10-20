@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 namespace Emet.FileSystems {
 	///<summary>Describes a DirectoryEntry</summary>
 	///<remarks>If the DirectoryEntry was constructed with a relative path and the current directory was since changed, the object invokes unspecified (usually bad) behavior until Refresh() is called the first time, at which point it uses the current directory as of the most recent call to Refresh() reliably</remarks>
-public class DirectoryEntry : FileSystemNode {
+	public class DirectoryEntry : FileSystemNode {
 		///<summary>Constructs a new directory entry from a file path</summary>
 		///<param name="path">The path to the directory entry to inspect</param>
 		///<param name="symbolicLinkBehavior">What to do if path is a symbolic link</param>

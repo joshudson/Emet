@@ -37,10 +37,10 @@ namespace Emet.FileSystems {
 
 	///<summary>Describes a filesystem object</summary>
 	public class FileSystemNode {
-    // These are not const in case we have to port to something that uses something else.
-    ///<summary>Name of the current directory within itself</summary>
+		// These are not const in case we have to port to something that uses something else.
+		///<summary>Name of the current directory within itself</summary>
 		public static readonly string CurrentDirectoryName = ".";
-    ///<summary>Name of the parent directory within the current directory</summary>
+		///<summary>Name of the parent directory within the current directory</summary>
 		public static readonly string ParentDirectoryName = "..";
 
 #if OSTYPE_UNIX
