@@ -281,7 +281,10 @@ namespace Emet.FileSystems {
 					if (0 == NativeMethods.DeviceIoControl(handle, NativeMethods.FSCTL_GET_REPARSE_POINT,
 							IntPtr.Zero, 0, results, buflen, out uint returned, IntPtr.Zero)) {
 						var errno = (int)Marshal.GetLastWin32Error();
-						if (errno == IOErrors.ERROR_MORE_DATA) continue;
+						if (errno == IOErrors.ERROR_MORE_DATA) {
+							buflen <<= 1;
+							continue;
+						}
 						var ci = new System.ComponentModel.Win32Exception();
 						throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
 					}

@@ -255,7 +255,10 @@ Console.WriteLine(errno);
 					if (0 == NativeMethods.DeviceIoControl(handle, NativeMethods.FSCTL_GET_REPARSE_POINT,
 							IntPtr.Zero, 0, results, buflen, out uint returned, IntPtr.Zero)) {
 						var errno2 = (int)Marshal.GetLastWin32Error();
-						if (errno2 == IOErrors.ERROR_MORE_DATA) continue; // Here's where we go around the loop
+						if (errno2 == IOErrors.ERROR_MORE_DATA) {
+							buflen <<= 1;
+							continue; // Here's where we go around the loop
+						}
 						var ci = new System.ComponentModel.Win32Exception();
 						throw new IOException(ci.Message, unchecked((int)0x80070000 | errno2));
 					}
