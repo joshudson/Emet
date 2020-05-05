@@ -5,6 +5,6 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>0414</NoWarn>
     <DebugType>None</DebugType>
-    <VersionPrefix>0.0.1</VersionPrefix>
+    <VersionPrefix>0.0.2</VersionPrefix>
   </PropertyGroup>
 </Project>
