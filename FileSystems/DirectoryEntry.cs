@@ -210,7 +210,7 @@ namespace Emet.FileSystems {
 							FillFindDataResult(ref ff);
 							FillMakeStuffUpBecauseInaccessible();
 						} else {
-							var errno2 = (int)Marshal.GetLastWin32Error();
+							var errno2 = unchecked((int)0x80070000 | (int)Marshal.GetLastWin32Error());
 							if (!IsPassError(errno2)) {
 								var ci = new System.ComponentModel.Win32Exception();
 								throw new IOException(ci.Message, errno2);

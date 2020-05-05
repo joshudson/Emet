@@ -332,7 +332,7 @@ Console.WriteLine(errno);
 #endif
 		///<summary>Returns the identifier of the file on its device</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
-		///<remarks>Symbolic links on Windows like to return the inode number of the backing file from the Native API calls</remarks>
+		///<remarks>Symbolic links on Windows like to return the inode number of the backing file from the Native API calls; a platform check only helps for local filesystems</remarks>
 #if OS_WIN
 		public long InodeNumber { get { if (!loaded2) _Refresh(); return inodeNumber; } }
 #elif OSTYPE_UNIX

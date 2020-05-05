@@ -70,6 +70,16 @@ static class Program {
 			RunSomeTest("Testing that follow never directory does not follow link to directory", () => {
 					AssertAreEqual(FileType.SymbolicLink, (new DirectoryEntry(Path.Combine(testpath, "symlink2"), FileSystem.FollowSymbolicLinks.Never)).FileType);
 				});
+			RunSomeTest("Testing FileExists", () => {
+					AssertAreEqual(false, FileSystem.FileExists(Path.Combine(testpath, "dir1")));
+					AssertAreEqual(true, FileSystem.FileExists(Path.Combine(testpath, "file1")));
+					AssertAreEqual(false, FileSystem.FileExists(Path.Combine(testpath, "nope")));
+			});
+			RunSomeTest("Testing DirectoryExists", () => {
+					AssertAreEqual(true, FileSystem.DirectoryExists(Path.Combine(testpath, "dir1")));
+					AssertAreEqual(false, FileSystem.DirectoryExists(Path.Combine(testpath, "file1")));
+					AssertAreEqual(false, FileSystem.DirectoryExists(Path.Combine(testpath, "nope")));
+			});
 			void Enum(FileSystem.FollowSymbolicLinks behavior)
 			{
 				bool founddir1 = false;

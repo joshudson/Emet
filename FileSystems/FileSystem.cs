@@ -272,7 +272,7 @@ namespace Emet.FileSystems {
 				if (handle == NativeMethods.INVALID_HANDLE_VALUE) {
 					var errno = Marshal.GetLastWin32Error();
 					var ci = new System.ComponentModel.Win32Exception();
-					throw new IOException(ci.Message, errno);
+					throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
 				}
 				uint buflen = 1024;
 				uint hdrsize = (uint)Marshal.SizeOf<NativeMethods.REPARSE_DATA_BUFFER_SYMLINK>();
@@ -364,6 +364,27 @@ namespace Emet.FileSystems {
 		///<summary>Returns whether or not the OS supports creating symbolic links</summary>
 		public static bool OSSupportsSymbolicLinks => throw null;
 #endif
+
+		///<summary>Returns whether or not a file exists</summary>
+		///<param name="path">the path to the file to check</param>
+		///<remarks>can return false if the user does not have enough permissions on the path containing the file</remarks>
+		///<exception cref="System.IO.IOException">An IO error occurred</exception>
+		public static bool FileExists(string path)
+			=> new DirectoryEntry(path, FollowSymbolicLinks.Always).FileType == FileType.File;
+
+		///<summary>Returns whether or not a directory exists</summary>
+		///<param name="path">the path to the directory to check</param>
+		///<remarks>can return false if the user does not have enough permissions on the path containing the directory</remarks>
+		///<exception cref="System.IO.IOException">An IO error occurred</exception>
+		public static bool DirectoryExists(string path)
+			=> new DirectoryEntry(path, FollowSymbolicLinks.Always).FileType == FileType.Directory;
+
+		///<summary>Returns whether or not a file name is in use</summary>
+		///<param name="path">the path to check the existence of</param>
+		///<remarks>can return false if the user does not have enough permissions on the path containing the file system node</remarks>
+		///<exception cref="System.IO.IOException">An IO error occurred</exception>
+		public static bool PathExists(string path)
+			=> new DirectoryEntry(path, FollowSymbolicLinks.Never).FileType != FileType.DoesNotExist;
 
 #if OS_WIN
 		internal static string CharArrayToString(char[] namestring)
