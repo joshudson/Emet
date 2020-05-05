@@ -38,6 +38,7 @@ namespace Emet.FileSystems {
 		public static readonly int MemoryMappedSharingViolation = 26;
 		public static readonly int FileTooLarge = 27;
 		public static readonly int DiskFull = 28;
+		public static readonly int DiskFull2 = 0xFFFE;
 		public static readonly int NotSeekableDevice = 29;
 		public static readonly int BrokenPipe = 32;
 #if OS_LINUXX64
@@ -144,6 +145,7 @@ namespace Emet.FileSystems {
 		public static readonly int MemoryMappedSharingViolation = 26;
 		public static readonly int FileTooLarge = unchecked((int)0x800700DF);
 		public static readonly int DiskFull = unchecked((int)0x80070027);
+		public static readonly int DiskFull2 = unchecked((int)0x80070070);
 		public static readonly int NotSeekableDevice = unchecked((int)0x80070084);
 		public static readonly int BrokenPipe = unchecked((int)0x8007006D);
 		public static readonly int WouldDeadlock = 35;
@@ -247,6 +249,8 @@ namespace Emet.FileSystems {
 		public static readonly int FileTooLarge = 27;
 		///<summary>The disk is full</summary>
 		public static readonly int DiskFull = 28;
+		///<summary>The disk is full</summary>
+		public static readonly int DiskFull2 = unchecked((int)0x80070070);
 		///<summary>The device can't be seeked (probably a pipe or a socket)</summary>
 		public static readonly int NotSeekableDevice = 29;
 		///<summary>A write to a pipe found the reader has closed the handle</summary>
