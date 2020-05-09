@@ -51,7 +51,19 @@ namespace Emet.FileSystems {
 		internal static extern IntPtr opendir([MarshalAs(UnmanagedType.LPArray)] byte[] path);
 
 		[DllImport("libc.so.6", SetLastError=true)]
-		internal static extern IntPtr closedir(IntPtr dir);
+		internal static extern IntPtr fdopendir(IntPtr handle);
+
+		[DllImport("libc.so.6", SetLastError=true)]
+		internal static extern void rewinddir(IntPtr dir);
+
+		[DllImport("libc.so.6", SetLastError=true)]
+		internal static extern int closedir(IntPtr dir);
+
+		[DllImport("libc.so.6", SetLastError=true)]
+		internal static extern int close(IntPtr handle);
+
+		[DllImport("libc.so.6", SetLastError=true)]
+		internal static extern IntPtr open([MarshalAs(UnmanagedType.LPArray)] byte[] path, int flags);
 
 		[DllImport("libc.so.6", SetLastError=true)]
 		internal static extern int readdir64_r(IntPtr dir, ref dirent64 entry, out IntPtr result);
@@ -76,6 +88,12 @@ namespace Emet.FileSystems {
 
 		[DllImport("libc.so.6", SetLastError=true)]
 		internal static extern long readlink([MarshalAs(UnmanagedType.LPArray)] byte[] filename, [MarshalAs(UnmanagedType.LPArray)] byte[] buffer, long buflen);
+
+		[DllImport("libc.so.6", SetLastError=true)]
+		internal static extern int rmdir([MarshalAs(UnmanagedType.LPArray)] byte[] filename);
+
+		[DllImport("libc.so.6", SetLastError=true)]
+		internal static extern int unlink([MarshalAs(UnmanagedType.LPArray)] byte[] filename);
 #endif
 
 #if OS_MACOSX64
@@ -123,7 +141,19 @@ namespace Emet.FileSystems {
 		internal static extern IntPtr opendir([MarshalAs(UnmanagedType.LPArray)] byte[] path);
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
-		internal static extern IntPtr closedir(IntPtr dir);
+		internal static extern IntPtr fdopendir(IntPtr handle);
+
+		[DllImport("libSystem.dylib", SetLastError=true)]
+		internal static extern IntPtr rewinddir(IntPtr dir);
+
+		[DllImport("libSystem.dylib", SetLastError=true)]
+		internal static extern int closedir(IntPtr dir);
+
+		[DllImport("libSystem.dylib", SetLastError=true)]
+		internal static extern int close(IntPtr handle);
+
+		[DllImport("libSystem.dylib", SetLastError=true)]
+		internal static extern IntPtr open([MarshalAs(UnmanagedType.LPArray)] byte[] path, int flags);
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
 		internal static extern IntPtr readdir(IntPtr dir);
@@ -148,9 +178,16 @@ namespace Emet.FileSystems {
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
 		internal static extern long readlink([MarshalAs(UnmanagedType.LPArray)] byte[] filename, [MarshalAs(UnmanagedType.LPArray)] byte[] buffer, long buflen);
+
+		[DllImport("libSystem.dylib", SetLastError=true)]
+		internal static extern int rmdir([MarshalAs(UnmanagedType.LPArray)] byte[] filename);
+
+		[DllImport("libSystem.dylib", SetLastError=true)]
+		internal static extern int unlink([MarshalAs(UnmanagedType.LPArray)] byte[] filename);
 #endif
 
 #if OS_WIN
+		internal const int FileDispositionInfo = 4;
 		internal const int FileFsVolumeInformation = 1;
 		internal const int FileBasicInformation = 4;
 		internal const int FileStandardInformation = 5;
@@ -167,15 +204,31 @@ namespace Emet.FileSystems {
 		internal const uint OPEN_ALWAYS = 4;
 		internal const uint OPEN_EXISTING = 3;
 		internal const uint TRUNCATE_EXISTING = 5;
+		internal const uint FILE_LIST_DIRECTORY = 1;
+		internal const uint FILE_TRAVERSE = 32;
 		internal const uint FILE_ATTRIBUTE_DIRECTORY = 16;
 		internal const uint FILE_ATTRIBUTE_REPARSE_POINT = 1024;
 		internal const uint FILE_READ_ATTRIBUTES = 128;
+		internal const uint DELETE = 65536;
+		internal const uint SYNCHRONIZE = 0x100000;
 		internal const uint FILE_FLAG_BACKUP_SEMANTICS = 0x2000000;
 		internal const uint FILE_FLAG_OPEN_NO_RECALL = 0x1000000;
 		internal const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x200000;
 		internal const uint SYMBOLIC_LINK_FLAG_DIRECTORY = 1;
 		internal const uint SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE = 2;
 		internal const uint FSCTL_GET_REPARSE_POINT = 589992;
+		internal const uint OBJ_CASE_INSENSITIVE = 0x00000040;
+
+		internal const uint FileDirectoryInformation = 1;
+		internal const uint FILE_DIRECTORY_FILE = 1;
+		internal const uint FILE_SYNCHRONOUS_IO_NONALERT = 0x20;
+		internal const uint FILE_OPEN_FOR_BACKUP_INTENT = 0x4000;
+		internal const uint FILE_OPEN_REPARSE_POINT = 0x200000;
+		internal const int STATUS_PENDING = 0x103;
+		internal const int STATUS_REPARSE = 0x104;
+		internal const int STATUS_BUFFER_OVERFLOW = unchecked((int)0x80000005);
+		internal const int STATUS_NO_MORE_FILES = unchecked((int)0x80000006);
+		internal const int STATUS_INFO_LENGTH_MISMATCH = unchecked((int)0xC0000004);
 
 		internal static readonly DateTime Epoch = new DateTime(1601, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -183,6 +236,23 @@ namespace Emet.FileSystems {
 		internal struct IO_STATUS_BLOCK {
 			internal IntPtr Status;
 			internal UIntPtr Information;
+		}
+
+		[StructLayout(LayoutKind.Sequential)]
+		internal struct OBJECT_ATTRIBUTES {
+			internal uint Length;
+			internal IntPtr RootDirectory;
+			internal IntPtr ObjectName; // points to a UNICODE_String
+			internal uint Attributes;
+			internal IntPtr SecurityDescriptor;
+			internal IntPtr SecurityQualityOfService;
+		}
+
+		[StructLayout(LayoutKind.Sequential)]
+		internal struct UNICODE_STRING {
+			internal ushort Length; // In bytes
+			internal ushort MaximumLength; // Ditto
+			internal IntPtr Buffer;
 		}
 
 		[StructLayout(LayoutKind.Sequential)]
@@ -267,6 +337,21 @@ namespace Emet.FileSystems {
 		}
 
 		[StructLayout(LayoutKind.Sequential)]
+		internal struct FILE_DIRECTORY_INFORMATION {
+			internal uint NextEntryOffset;
+			internal uint FileIndex;
+			internal ulong CreationTime;
+			internal ulong LastAccessTime;
+			internal ulong LastWriteTime;
+			internal ulong ChangeTime;
+			internal ulong EndOfFile;
+			internal ulong AllocationSize;
+			internal uint FileAttributes;
+			internal uint FileNameLength;
+			/* File name immediately follows */
+		};
+
+		[StructLayout(LayoutKind.Sequential)]
 		internal struct FILETIME {
 			internal uint dwLowDateTime;
 			internal uint dwHighDateTime;
@@ -289,6 +374,16 @@ namespace Emet.FileSystems {
 		}
 
 		[DllImport("ntdll.dll")]
+		internal static extern int NtClose(IntPtr handle);
+
+		[DllImport("ntdll.dll")]
+		internal static extern int NtOpenFile(ref IntPtr handle, uint ACCESS_MASK, ref OBJECT_ATTRIBUTES Attributes, out IO_STATUS_BLOCK status, uint ShareAccess, uint OpenOptions);
+
+		[DllImport("ntdll.dll")]
+		internal static extern int NtQueryDirectoryFile(IntPtr handle, IntPtr eventHandle, IntPtr apcRoutine, IntPtr apcContext, out IO_STATUS_BLOCK status,
+				IntPtr FileInformation, uint cFileInformation, uint FileInformationClass, bool ReturnSingleEntry, IntPtr FileMask, bool RestartScan);
+
+		[DllImport("ntdll.dll")]
 		internal static extern int NtQueryVolumeInformationFile(IntPtr handle, out IO_STATUS_BLOCK block, out FILE_FS_VOLUME_INFORMATION volume_info, int length, int Class);
 		[DllImport("ntdll.dll")]
 		internal static extern int NtQueryInformationFile(IntPtr handle, out IO_STATUS_BLOCK block, out FILE_BASIC_INFORMATION basic_info, int length, int Class);
@@ -301,6 +396,10 @@ namespace Emet.FileSystems {
 
 		[DllImport("ntdll.dll")]
 		internal static extern int RtlNtStatusToDosError(int ntstatus);
+
+		// Used for deleting a file; deletepending is 4 bytes long despite only 1 byte used, so we must give it a 4 byte aligned pointer.
+		[DllImport("kernel32.dll", SetLastError=true)]
+		internal static extern byte SetFileInformationByHandle(IntPtr handle, int FileInformationClass, ref uint deletepending, uint buffersize);
 
 		[DllImport("kernel32.dll", SetLastError=true)]
 		internal static extern void SetLastError(int error);

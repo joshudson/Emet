@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using Encoding = System.Text.Encoding;
 
 namespace Emet.FileSystems {
@@ -310,6 +311,369 @@ namespace Emet.FileSystems {
 			throw null;
 #endif
 		}
+
+		///<summary>Removes a file from the disk</summary>
+		///<param name="path">The path to the file to be removed</param>
+		///<returns>true if the file was removed, false if path already didn't exist</returns>
+		///<exception cref="System.IO.IOException">An IO error occurred</exception>
+		public static bool RemoveFile(string path)
+		{
+#if OSTYPE_UNIX
+			if (NativeMethods.unlink(NameToByteArray(path)) < 0) {
+				int errno = Marshal.GetLastWin32Error();
+				if (!DirectoryEntry.IsPassError(errno)) {
+					var ci = new System.ComponentModel.Win32Exception();
+					throw new System.IO.IOException(path + ": " + ci.Message, errno);
+				}
+				return false;
+			}
+			return true;
+#elif OS_WIN
+			IntPtr handle = NativeMethods.INVALID_HANDLE_VALUE;
+			try {
+				handle = NativeMethods.CreateFileW(path, NativeMethods.FILE_READ_ATTRIBUTES | NativeMethods.DELETE,
+						NativeMethods.FILE_SHARE_READ | NativeMethods.FILE_SHARE_WRITE | NativeMethods.FILE_SHARE_DELETE,
+						IntPtr.Zero, NativeMethods.OPEN_EXISTING, NativeMethods.FILE_FLAG_BACKUP_SEMANTICS, NativeMethods.INVALID_HANDLE_VALUE);
+				if (handle == NativeMethods.INVALID_HANDLE_VALUE)
+				{
+					int errno = unchecked(((int)0x80070000) | Marshal.GetLastWin32Error());
+					if (errno != IOErrors.IsADirectory && DirectoryEntry.IsPassError(errno)) return false;
+					var ci = new System.ComponentModel.Win32Exception();
+					throw new System.IO.IOException(path + ": " + ci.Message, errno);
+				}
+        int status = NativeMethods.NtQueryInformationFile(handle, out NativeMethods.IO_STATUS_BLOCK sb,
+						out NativeMethods.FILE_BASIC_INFORMATION bi,
+            Marshal.SizeOf<NativeMethods.FILE_BASIC_INFORMATION>(), NativeMethods.FileBasicInformation);
+        if (status != 0) {
+          int errno = NativeMethods.RtlNtStatusToDosError(status);
+          NativeMethods.SetLastError(errno);
+          var ci = new System.ComponentModel.Win32Exception();
+          throw new IOException(path + ": " + ci.Message, unchecked((int)0x80070000 | errno));
+        }
+				if ((bi.FileAttributes & (NativeMethods.FILE_ATTRIBUTE_DIRECTORY | NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT))
+						== NativeMethods.FILE_ATTRIBUTE_DIRECTORY) {
+					NativeMethods.SetLastError(IOErrors.IsADirectory & 0xFFFF);
+          var ci = new System.ComponentModel.Win32Exception();
+          throw new IOException(path + ": " + ci.Message, IOErrors.IsADirectory);
+				}
+				uint deletepending = 1;
+				if (0 == NativeMethods.SetFileInformationByHandle(handle, NativeMethods.FileDispositionInfo, ref deletepending, 4))
+				{
+					int errno = unchecked(((int)0x80070000) | Marshal.GetLastWin32Error());
+					var ci = new System.ComponentModel.Win32Exception();
+					throw new System.IO.IOException(path + ": " + ci.Message, errno);
+				}
+				return true;
+			} finally {
+				if (handle != NativeMethods.INVALID_HANDLE_VALUE) NativeMethods.CloseHandle(handle);
+			}
+#else
+			throw null;
+#endif
+		}
+
+		///<summary>Removes a file from the disk</summary>
+		///<param name="path">The path to the file to be removed</param>
+		///<param name="recurse">Whether or not to remove the directory and all its contents</param>
+		///<returns>true if the file was removed, false if path already didn't exist</returns>
+		///<exception cref="System.ArgumentException">Tried to remove a mountpoint on unix systems</exception>
+		///<exception cref="System.InvalidOperationException">A system constraint was found to be violated while descending the directory tree</exception>
+		///<exception cref="System.IO.IOException">An IO error occurred</exception>
+		public static bool RemoveDirectory(string path, bool recurse)
+#if OSTYPE_UNIX
+				=> RemoveDirectory(NameToByteArray(path), 0, recurse ? 1 : 0, () => path);
+
+		private static bool RemoveDirectory(byte[] path, long parentdevice, int flags, Func<string> builderrorpath)
+		{
+			while (0 > NativeMethods.rmdir(path))
+			{
+				int errno = Marshal.GetLastWin32Error();
+				if (DirectoryEntry.IsPassError(errno) && errno != IOErrors.IsNotADirectory) return false;
+				if ((flags & 2) != 0 && errno == IOErrors.IsNotADirectory) {
+					if (0 < NativeMethods.unlink(path)) {
+						if (DirectoryEntry.IsPassError(errno)) return false;
+						var ci = new System.ComponentModel.Win32Exception();
+						throw new System.IO.IOException(builderrorpath() + ": " + ci.Message, errno);
+					}
+					return true;
+				}
+				if (errno != IOErrors.DirectoryNotEmpty || (flags & 1) == 0) {
+					var ci = new System.ComponentModel.Win32Exception();
+					throw new System.IO.IOException(builderrorpath() + ": " + ci.Message, errno);
+				}
+				bool owns_handle = true;
+				IntPtr dir = IntPtr.Zero; // The compiler can't figure out we can omit these.
+				IntPtr handle = IntPtr.Zero;
+				try {
+					try {} finally {
+						handle = NativeMethods.open(path, 0);
+						owns_handle = true; // unsplittable
+					}
+					if (handle.ToInt32() >= 0) {
+						var hinfo = new FileSystemNode(new SafeFileHandle(handle, false));
+						var dinfo = new ByteArrayDirectoryEntry(path, builderrorpath);
+						// Assert it's the same node.
+						if (dinfo.FileType == FileType.DoesNotExist) return true; // It's already gone.
+						if (dinfo.DeviceNumber != hinfo.DeviceNumber || dinfo.InodeNumber != hinfo.InodeNumber)
+							return false; // It's already been deleted and recreated. Pretend the open() was a little faster and we never opened it.
+							              // Note that if we're inside a recursive call, the next pass will get it.
+						long devicenumber = hinfo.DeviceNumber;
+						if ((flags & 2) != 0 && parentdevice != devicenumber)
+							throw new ArgumentException(builderrorpath() + ": Tried to remove a mountpoint");
+						string pathbase = "/proc/self/fd/" + handle.ToInt32().ToString(System.Globalization.CultureInfo.InvariantCulture) + "/";
+						var newpathbase = pathbase.Length;
+						var newpath = new byte[newpathbase + 256];
+						Encoding.ASCII.GetBytes(pathbase, 0, newpathbase, newpath, 0);
+						try {} finally {
+							dir = NativeMethods.fdopendir(handle);
+							if (dir != IntPtr.Zero) owns_handle = false;
+						}
+						bool didsomething;
+						do {
+							NativeMethods.rewinddir(dir);
+							didsomething = false;
+							for (;;) {
+#if OS_LINUXX64
+								var readentry = new NativeMethods.dirent64();
+								readentry.d_name = new byte[256];
+								int result = NativeMethods.readdir64_r(dir, ref readentry, out IntPtr z);
+								if (result < 0) {
+									var errno2 = Marshal.GetLastWin32Error();
+									var ci2 = new System.ComponentModel.Win32Exception();
+									throw new IOException(builderrorpath() + ": " + ci2.Message, errno2);
+								}
+								if (z == IntPtr.Zero) break;
+								var namelen = readentry.d_reclen;
+#else
+								IntPtr result = NativeMethods.readdir(dir);
+								if (result == IntPtr.Zero) {
+									var errno2 = Marshal.GetLastWin32Error();
+									if (errno2 == 0) break;
+									var ci2 = new System.ComponentModel.Win32Exception();
+									throw new IOException(builderrorpath() + ": " + ci2.Message, errno2);
+								}
+								var readentry = Marshal.PtrToStructure<NativeMethods.dirent>(result);
+								var namelen = readentry.d_namelen;
+#endif
+#if OS_LINUXX64
+								Array.Copy(readentry.d_name, 0, newpath, newpathbase, Math.Min((int)namelen, 256));
+#else
+								Marshal.Copy(result + NativeMethods.dirent_d_name_offset, newpath, newpathbase, Math.Min((int)namelen, 256));
+#endif
+								if (namelen < 256) newpath[newpathbase + namelen] = 0; // We might not have copied the null
+								// Find trailing null
+								for (namelen = 0; newpath[newpathbase + namelen] != 0; namelen++)
+									if (namelen == 255)
+										throw new InvalidOperationException("File name exceeds 255 bytes"); // Not supposed to be possible!
+									else if (newpath[newpathbase + namelen] == '/')
+										throw new InvalidOperationException("A file with / in the name was encountered; check NFS drivers");
+								if (namelen == 0) throw new InvalidOperationException("File with the null name encountered");
+								if (namelen == 1 && newpath[newpathbase] == '.') continue;
+								if (namelen == 2 && newpath[newpathbase] == '.' && newpath[newpathbase + 1] == '.') continue;
+								newpath[newpathbase + namelen] = 0;
+								didsomething |= RemoveDirectory(newpath, devicenumber, 3,
+										() => Path.Combine(builderrorpath(), Encoding.UTF8.GetString(newpath, newpathbase, namelen)));
+							}
+						} while (didsomething);
+					}
+				} finally {
+					if (dir != IntPtr.Zero) NativeMethods.closedir(dir);
+					if (owns_handle) NativeMethods.close(handle);
+				}
+				// Go back around and try to remove it again. If it's still not empty, somebody's trying to fill it. Be stubborn.
+			}
+			return true;
+		}
+
+		private class ByteArrayDirectoryEntry : FileSystemNode
+		{
+			internal ByteArrayDirectoryEntry(byte[] bytepath, Func<string> builderrorpath) : base(null)
+			{
+#if OS_LINUXX64
+				var statbuf = new NativeMethods.statbuf64();
+        var cresult = NativeMethods.__lxstat64(NativeMethods.statbuf_version, bytepath, out statbuf);
+#else
+				var statbuf = new NativeMethods.statbuf();
+				var cresult = NativeMethods.lstat(bytepath, out statbuf);
+#endif
+				if (cresult < 0) {
+					int errno = Marshal.GetLastWin32Error();
+					if (!DirectoryEntry.IsPassError(errno)) {
+						var ci = new System.ComponentModel.Win32Exception();
+						throw new IOException(builderrorpath() + ": " + ci.Message, errno);
+					}
+					Clear();
+				} else {
+					FillStatResult(ref statbuf);
+				}
+			}
+		}
+#elif OS_WIN
+		{
+			int bptr = path.Length - 1;
+			while (--bptr >= 0)
+				if (path[bptr] == '\\' || path[bptr] == '/')
+					break;
+			IntPtr parent = NativeMethods.INVALID_HANDLE_VALUE;
+			IntPtr nameptr = IntPtr.Zero;
+			IntPtr uptr = IntPtr.Zero;
+			IntPtr dotdot = IntPtr.Zero;
+			IntPtr backslash = IntPtr.Zero;
+			int namelen;
+			try {
+				string parentname;
+				string name;
+				if (bptr < 0) {
+					parentname = ".";
+					namelen = path.Length;
+					name = path;
+				} else {
+					if (bptr == 0)
+						parentname = "\\";
+					else if (bptr == 2 && path[1] == ':' && (path[0] >= 'A' && path[0] <= 'Z' || path[0] >= 'a' && path[0] <= 'z'))
+						parentname = path.Substring(0, 3);
+					else
+						parentname = path.Substring(0, bptr);
+					namelen = path.Length - (bptr + 1);
+					name = path.Substring(bptr + 1);
+				}
+				nameptr = Marshal.StringToHGlobalUni(name);
+				if (path[path.Length - 1] == '\\' || path[path.Length - 1] == '/') --namelen; // For consistency with *n?x
+				uptr = Marshal.AllocHGlobal(Marshal.SizeOf<NativeMethods.UNICODE_STRING>());
+				parent = NativeMethods.CreateFileW(parentname, NativeMethods.FILE_TRAVERSE,
+						NativeMethods.FILE_SHARE_READ | NativeMethods.FILE_SHARE_WRITE | NativeMethods.FILE_SHARE_DELETE, IntPtr.Zero,
+						NativeMethods.OPEN_EXISTING, NativeMethods.FILE_FLAG_BACKUP_SEMANTICS, NativeMethods.INVALID_HANDLE_VALUE);
+				if (parent == NativeMethods.INVALID_HANDLE_VALUE) {
+					int errno = unchecked((int)0x80070000 | Marshal.GetLastWin32Error());
+					if (DirectoryEntry.IsPassError(errno) && errno != IOErrors.IsNotADirectory) return false;
+					var ci = new System.ComponentModel.Win32Exception();
+					throw new System.IO.IOException(path + ": " + ci.Message);
+				}
+				return RemoveDirectory(parent, uptr, name, nameptr, namelen, recurse ? 1 : 0, () => parentname);
+			} finally {
+				if (nameptr != IntPtr.Zero) Marshal.FreeHGlobal(nameptr);
+				if (uptr != IntPtr.Zero) Marshal.FreeHGlobal(uptr);
+				if (parent != NativeMethods.INVALID_HANDLE_VALUE) NativeMethods.CloseHandle(parent);
+			}
+		}
+
+		private static bool RemoveDirectory(IntPtr parent, IntPtr uptr, string name, IntPtr nameptr, int namelen,
+				int flags, Func<string> builderrorpath)
+		{
+			if (namelen > 32767) return false; // It doesn't exist.
+			Func<string> myerrorpath = () => builderrorpath() + "\\" + name; // Can't use Path.Combine; it outsmarts itself
+			IntPtr directory = NativeMethods.INVALID_HANDLE_VALUE;
+			IntPtr buffer = IntPtr.Zero;
+			int step = Marshal.SizeOf<NativeMethods.FILE_DIRECTORY_INFORMATION>();
+			try {
+				try {} finally { buffer = Marshal.AllocHGlobal(65536); }
+				NativeMethods.IO_STATUS_BLOCK io;
+				NativeMethods.UNICODE_STRING ustr;
+				NativeMethods.OBJECT_ATTRIBUTES attributes;
+				ustr.Length = unchecked((ushort)(namelen << 1));
+				ustr.MaximumLength = ustr.Length;
+				ustr.Buffer = nameptr;
+				Marshal.StructureToPtr(ustr, uptr, false);
+				attributes.Length = (uint)Marshal.SizeOf<NativeMethods.OBJECT_ATTRIBUTES>();
+				attributes.RootDirectory = parent;
+				attributes.ObjectName = uptr;
+				attributes.Attributes = ((flags & 2) == 0) ? NativeMethods.OBJ_CASE_INSENSITIVE : 0;
+				attributes.SecurityDescriptor = IntPtr.Zero;
+				attributes.SecurityQualityOfService = IntPtr.Zero;
+				int status = NativeMethods.NtOpenFile(ref directory,
+						(((flags & 5) == 1) ? NativeMethods.FILE_LIST_DIRECTORY | NativeMethods.FILE_TRAVERSE : 0) |
+						(((flags & 2) == 0) ? NativeMethods.FILE_READ_ATTRIBUTES : 0) | NativeMethods.SYNCHRONIZE | NativeMethods.DELETE,
+						ref attributes, out io,
+						NativeMethods.FILE_SHARE_READ | NativeMethods.FILE_SHARE_WRITE | NativeMethods.FILE_SHARE_DELETE,
+						(((flags & 4) == 0) ? NativeMethods.FILE_DIRECTORY_FILE : 0) | NativeMethods.FILE_SYNCHRONOUS_IO_NONALERT
+						| NativeMethods.FILE_OPEN_FOR_BACKUP_INTENT | NativeMethods.FILE_OPEN_REPARSE_POINT);
+				if (unchecked(status & (int)0x80000000) != 0) {
+					status = unchecked((int)0x80070000 | NativeMethods.RtlNtStatusToDosError(status));
+					if (status != IOErrors.IsADirectory && DirectoryEntry.IsPassError(status)) return false;
+					NativeMethods.SetLastError(status & 0xFFFF);
+					var ci = new System.ComponentModel.Win32Exception();
+					throw new System.IO.IOException(myerrorpath() + ": " + ci.Message, status);
+				}
+				if (status == NativeMethods.STATUS_PENDING)
+					throw new InvalidOperationException("STATUS_PENDING was returned from synchronous open");
+				if (status == NativeMethods.STATUS_REPARSE)
+					throw new InvalidOperationException("STATUS_REPARSE was returned on requesting to open a reparse point");
+				if ((flags & 2) == 0) {
+        	status = NativeMethods.NtQueryInformationFile(directory, out NativeMethods.IO_STATUS_BLOCK sb,
+							out NativeMethods.FILE_BASIC_INFORMATION bi,
+	            Marshal.SizeOf<NativeMethods.FILE_BASIC_INFORMATION>(), NativeMethods.FileBasicInformation);
+  	      if (status != 0) {
+    	      int errno = NativeMethods.RtlNtStatusToDosError(status);
+      	    NativeMethods.SetLastError(errno);
+						var ci = new System.ComponentModel.Win32Exception();
+						throw new IOException(myerrorpath() + ": " + ci.Message, unchecked((int)0x80070000 | errno));
+  	      }
+					if ((bi.FileAttributes & (NativeMethods.FILE_ATTRIBUTE_DIRECTORY | NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT))
+							!= NativeMethods.FILE_ATTRIBUTE_DIRECTORY) {
+						NativeMethods.SetLastError(IOErrors.IsNotADirectory & 0xFFFF);
+						var ci = new System.ComponentModel.Win32Exception();
+          	throw new IOException(myerrorpath() + ": " + ci.Message, IOErrors.IsADirectory);
+					}
+				}
+				for (;;) {
+					uint deletepending = 1;
+					if (0 != NativeMethods.SetFileInformationByHandle(directory, NativeMethods.FileDispositionInfo, ref deletepending, 4))
+						return true;
+					int errno = unchecked(((int)0x80070000) | Marshal.GetLastWin32Error());
+					if ((flags & 1) == 0 || errno != IOErrors.DirectoryNotEmpty) {
+						var ci = new System.ComponentModel.Win32Exception();
+						throw new System.IO.IOException(myerrorpath() + ": " + ci.Message, errno);
+					}
+					bool didsomething;
+					do {
+						didsomething = false;
+						bool rewind = true;
+						for(;;) {
+							status = NativeMethods.NtQueryDirectoryFile(directory, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, out io,
+									buffer, 65536, NativeMethods.FileDirectoryInformation, false, IntPtr.Zero, rewind);
+							if (status == NativeMethods.STATUS_PENDING)
+								throw new InvalidOperationException("STATUS_PENDING was returned from synchronous directory read");
+							if (status == NativeMethods.STATUS_INFO_LENGTH_MISMATCH)
+								throw new InvalidOperationException("STATUS_INFO_LENGTH mismatch was returned from directory read");
+							if (status == NativeMethods.STATUS_BUFFER_OVERFLOW)
+								throw new InvalidOperationException("STATUS_BUFFER_OVERFLOW was returned from synchronous directory read but our buffer is 64k");
+							if (status == NativeMethods.STATUS_NO_MORE_FILES) break;
+							if (unchecked(status & (int)0x80000000) != 0) {
+								status = unchecked((int)0x80070000 | NativeMethods.RtlNtStatusToDosError(status));
+								NativeMethods.SetLastError(status & 0xFFFF);
+								var ci = new System.ComponentModel.Win32Exception();
+								throw new System.IO.IOException(myerrorpath() + ": " + ci.Message, errno);
+							}
+							rewind = false;
+							IntPtr nextentry;
+							IntPtr nextentryadjust = buffer;
+							do {
+								nextentry = nextentryadjust;
+								var thisentry = Marshal.PtrToStructure<NativeMethods.FILE_DIRECTORY_INFORMATION>(nextentry);
+								if (thisentry.FileNameLength >= 65536) throw new InvalidOperationException("Maximum OS file name length exceeded");
+								int thisnamelen = (int)(thisentry.FileNameLength >> 1);
+								if (thisnamelen == 0) throw new InvalidOperationException("File with the null name encountered");
+								string entryname = Marshal.PtrToStringUni(nextentry + step, thisnamelen);
+								if (entryname != "." &&  entryname != "..") {
+									if (entryname.Contains('\\')) throw new InvalidOperationException("File with a \\ in the name encountered");
+									didsomething |= RemoveDirectory(directory, uptr, entryname, nextentry + step, thisnamelen,
+										((thisentry.FileAttributes & (NativeMethods.FILE_ATTRIBUTE_DIRECTORY | NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT))
+												== NativeMethods.FILE_ATTRIBUTE_DIRECTORY)
+										? 3 : 6, myerrorpath);
+								}
+								nextentryadjust = nextentry + (int)thisentry.NextEntryOffset;
+							} while (nextentry != nextentryadjust);
+						}
+					} while (didsomething);
+				}
+			} finally {
+				if (directory != NativeMethods.INVALID_HANDLE_VALUE) NativeMethods.CloseHandle(directory);
+				if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer);
+			}
+		}
+#else
+			=> throw null;
+#endif
 
 		///<summary>Renames a file nearly atomically, but will not cross filesystems</summary>
 		///<param name="oldname">The original file name</param>

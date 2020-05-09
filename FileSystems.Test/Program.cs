@@ -154,6 +154,42 @@ static class Program {
 					FileSystem.RenameReplace(Path.Combine(testpath, "rnfr"), Path.Combine(testpath, "rnto"));
 					AssertAreEqual("Test", File.ReadAllText(Path.Combine(testpath, "rnto")));
 				});
+			RunSomeTest("Testing RemoveFile", () => {
+					CreateFile(Path.Combine(testpath, "file"));
+					Assert("file can be removed", FileSystem.RemoveFile(Path.Combine(testpath, "file")));
+					try {
+						FileSystem.RemoveFile(Path.Combine(testpath, "dir1"));
+						throw new AssertionFailed("RemoveFile should have thrown when passed a directory");
+					} catch (IOException) {}
+					Assert("File actually removed", !FileSystem.FileExists(Path.Combine(testpath, "file")));
+			});
+			// These asserts just check that the test harness isn't broken somewhere
+			Assert("file1 exists", FileSystem.FileExists(Path.Combine(testpath, "file1")));
+			Assert("dir2 exists", FileSystem.DirectoryExists(Path.Combine(testpath, "dir2")));
+			RunSomeTest("Testing RemoveDirectory", () => {
+					try {
+						FileSystem.RemoveDirectory(Path.Combine(testpath, "file1"), false);
+						throw new AssertionFailed("RemoveDirectory should have thrown when passed a non-directory");
+					} catch (IOException) {}
+					try {
+						FileSystem.RemoveDirectory(Path.Combine(testpath, "file1"), true);
+						throw new AssertionFailed("RemoveDirectory should have thrown when passed a non-directory (recursive mode)");
+					} catch (IOException) {}
+					Directory.CreateDirectory(Path.Combine(testpath, "r1"));
+					FileSystem.CreateSymbolicLink(Path.Combine("..", "dir2"), Path.Combine(testpath, "r1", "sm"));
+					Directory.CreateDirectory(Path.Combine(testpath, "r1", "r2"));
+					CreateFile(Path.Combine(testpath, "r1", "r2", "file"));
+					Directory.CreateDirectory(Path.Combine(testpath, "r1", "xyz"));
+					CreateFile(Path.Combine(testpath, "r1", "r2", "abc"));
+					var deltarget = Path.Combine(testpath, "r1");
+					try {
+						FileSystem.RemoveDirectory(deltarget, false);
+						throw new AssertionFailed("RemoveDirectory was recursive when asked not to be");
+					} catch (IOException e) { Assert("exception contains faulting path", e.Message.Contains(deltarget)); }
+					Assert("directory removed", FileSystem.RemoveDirectory(Path.Combine(testpath, "r1"), true));
+					Assert("directory actually removed", !FileSystem.DirectoryExists(Path.Combine(testpath, "r1")));
+					Assert("Symbolic link not traversed", FileSystem.DirectoryExists(Path.Combine(testpath, "dir2")));
+			});
 		}
 		catch (Exception ex) {
 			Environment.ExitCode = 1;
