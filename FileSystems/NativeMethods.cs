@@ -193,7 +193,6 @@ namespace Emet.FileSystems {
 		internal const int FileStandardInformation = 5;
 		internal const int FileInternalInformation = 6;
 		internal const int FileAllInformation = 18;
-		internal static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
 		internal const uint MOVEFILE_REPLACE_EXISTING = 1;
 		internal const uint FILE_SHARE_READ = 1;
 		internal const uint FILE_SHARE_WRITE = 2;

@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using Encoding = System.Text.Encoding;
+using static Emet.FileSystems.Util;
 
 namespace Emet.FileSystems {
 	///<summary>FileSystem contains static methods and properties for working with file systems</summary>
@@ -54,23 +55,13 @@ namespace Emet.FileSystems {
 				var ff = new NativeMethods.WIN32_FIND_DATA();
 				ffhandle = NativeMethods.FindFirstFileW(path + "\\*", out ff);
 				if (ffhandle == IOErrors.InvalidFileHandle) {
-					var hresult = unchecked((int)0x80070000 | (int)Marshal.GetLastWin32Error());
-					if (hresult == IOErrors.FileNotFound)
-						return Enumerable.Empty<DirectoryEntry>();
-					if (DirectoryEntry.IsPassError(hresult)) {
-						switch (nonExtantDirectoryBehavior)
-						{
-							case NonExtantDirectoryBehavior.ReturnEmpty:
-								return Enumerable.Empty<DirectoryEntry>();
-							case NonExtantDirectoryBehavior.ReturnNull:
-								return null;
-							//case NonExtantDirectoryBehavior.Throw:
-							default:
-								throw new DirectoryNotFoundException();
-						}
+					var exception = GetExceptionFromLastError(path,
+						nonExtantDirectoryBehavior == NonExtantDirectoryBehavior.ReturnEmpty || nonExtantDirectoryBehavior == NonExtantDirectoryBehavior.ReturnNull,
+						0, false);
+					if (exception is null) {
+						return (nonExtantDirectoryBehavior == NonExtantDirectoryBehavior.ReturnEmpty) ? Enumerable.Empty<DirectoryEntry>() : null;
 					}
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new IOException(ci.Message, hresult);
+					throw exception;
 				}
 				// Windows refuses to document that deleting the node from FindNextFile is safe.
 				var l = new DirectoryEntryList();
@@ -95,21 +86,13 @@ namespace Emet.FileSystems {
 			try {
 				opendirhandle = NativeMethods.opendir(NameToByteArray(path));
 				if (opendirhandle == IOErrors.InvalidFileHandle) {
-					var errno = Marshal.GetLastWin32Error();
-					if (DirectoryEntry.IsPassError(errno)) {
-						switch (nonExtantDirectoryBehavior)
-						{
-							case NonExtantDirectoryBehavior.ReturnEmpty:
-								return Enumerable.Empty<DirectoryEntry>();
-							case NonExtantDirectoryBehavior.ReturnNull:
-								return null;
-							//case NonExtantDirectoryBehavior.Throw:
-							default:
-								throw new DirectoryNotFoundException();
-						}
+					var exception = GetExceptionFromLastError(path,
+						nonExtantDirectoryBehavior == NonExtantDirectoryBehavior.ReturnEmpty || nonExtantDirectoryBehavior == NonExtantDirectoryBehavior.ReturnNull,
+						0, false);
+					if (exception is null) {
+						return (nonExtantDirectoryBehavior == NonExtantDirectoryBehavior.ReturnEmpty) ? Enumerable.Empty<DirectoryEntry>() : null;
 					}
-					var ciz = new System.ComponentModel.Win32Exception();
-					throw new IOException(ciz.Message, errno);
+					throw exception;
 				}
 				var entries = new List<DirectoryEntry>();
 #if OS_LINUXX64
@@ -119,11 +102,8 @@ namespace Emet.FileSystems {
 				for (;;) {
 #if OS_LINUXX64
 					int result = NativeMethods.readdir64_r(opendirhandle, ref readentry, out IntPtr z);
-					if (result > 0) {
-						var errno = Marshal.GetLastWin32Error();
-						var ci = new System.ComponentModel.Win32Exception();
-						throw new IOException(ci.Message, errno);
-					}
+					if (result > 0)
+						throw GetExceptionFromLastError(path, false, 0, false);
 					if (z == IntPtr.Zero)
 						break;
 					int dhint = (int)readentry.d_type << 12;
@@ -134,8 +114,7 @@ namespace Emet.FileSystems {
 					if (result == IntPtr.Zero) {
 						var errno = Marshal.GetLastWin32Error();
 						if (errno == 0) break;
-						var ci = new System.ComponentModel.Win32Exception();
-						throw new IOException(ci.Message, errno);
+						throw GetExceptionFromLastError(path, false, 0, false);
 					}
 					var readentry = Marshal.PtrToStructure<NativeMethods.dirent>(result);
 #if OS_FEATURES_DTYPE
@@ -173,15 +152,11 @@ namespace Emet.FileSystems {
 			var btargetpath = NameToByteArray(targetpath);
 			var blinkpath = NameToByteArray(linkpath);
 			if (NativeMethods.link(btargetpath, blinkpath) != 0) {
-				var errno = Marshal.GetLastWin32Error();
-				var ci = new System.ComponentModel.Win32Exception();
-				throw new IOException(ci.Message, errno);
+				throw GetExceptionFromLastError(linkpath, false, 0, true);
 			}
 #elif OS_WIN
 			if (0 == NativeMethods.CreateHardLinkW(linkpath, targetpath, IntPtr.Zero)) {
-				var errno = (int)Marshal.GetLastWin32Error();
-				var ci = new System.ComponentModel.Win32Exception();
-				throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
+				throw GetExceptionFromLastError(linkpath, false, 0, true);
 			}
 #else
 			throw null;
@@ -201,9 +176,7 @@ namespace Emet.FileSystems {
 			var btargetpath = NameToByteArray(targetpath);
 			var blinkpath = NameToByteArray(linkpath);
 			if (NativeMethods.symlink(btargetpath, blinkpath) != 0) {
-				var errno = Marshal.GetLastWin32Error();
-				var ci = new System.ComponentModel.Win32Exception();
-				throw new IOException(ci.Message, errno);
+				throw GetExceptionFromLastError(linkpath, false, 0, true);
 			}
 #elif OS_WIN
 			uint flags = 0;
@@ -230,11 +203,10 @@ namespace Emet.FileSystems {
 					if (0 != NativeMethods.CreateSymbolicLinkW(linkpath, targetpath, flags))
 						return ;
 					var errno2 = (int)Marshal.GetLastWin32Error();
-					if (errno2 != 1314 && errno2 != 1 && errno2 != 0xA0)
-						errno = errno2; // Try to get a better error
+					if (errno2 == 1314 || errno2 == 1 || errno2 == 0xA0)
+						NativeMethods.SetLastError(errno); // Couldn't get a better error
 				}
-				var ci = new System.ComponentModel.Win32Exception();
-				throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
+				throw GetExceptionFromLastError(linkpath, false, 0, true);
 			}
 #else
 			throw null;
@@ -256,24 +228,20 @@ namespace Emet.FileSystems {
 				results = new byte[buflen];
 				result = NativeMethods.readlink(blinkpath, results, results.Length);
 				if (result < 0) {
-					var errno = (int)Marshal.GetLastWin32Error();
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new IOException(ci.Message, errno);
+					throw GetExceptionFromLastError(path, false, 0, false);
 				}
 				// Documentation suggests we should never go around this loop but ...
 			} while (result == buflen);
 			results[result] = 0;
 			return ByteArrayToName(results);
 #elif OS_WIN
-			IntPtr handle = NativeMethods.INVALID_HANDLE_VALUE;
+			IntPtr handle = IOErrors.InvalidFileHandle;
 			try {
 				handle = NativeMethods.CreateFileW(path, NativeMethods.FILE_READ_ATTRIBUTES,
 						NativeMethods.FILE_SHARE_ALL, IntPtr.Zero, NativeMethods.OPEN_EXISTING,
 						NativeMethods.FILE_FLAG_BACKUP_SEMANTICS | NativeMethods.FILE_FLAG_OPEN_REPARSE_POINT, IntPtr.Zero);
-				if (handle == NativeMethods.INVALID_HANDLE_VALUE) {
-					var errno = Marshal.GetLastWin32Error();
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
+				if (handle == IOErrors.InvalidFileHandle) {
+					throw GetExceptionFromLastError(path, false, 0, false);
 				}
 				uint buflen = 1024;
 				uint hdrsize = (uint)Marshal.SizeOf<NativeMethods.REPARSE_DATA_BUFFER_SYMLINK>();
@@ -286,8 +254,7 @@ namespace Emet.FileSystems {
 							buflen <<= 1;
 							continue;
 						}
-						var ci = new System.ComponentModel.Win32Exception();
-						throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
+						throw GetExceptionFromLastError(path, false, 0, false);
 					}
 					GCHandle gch;
 					try {
@@ -305,7 +272,7 @@ namespace Emet.FileSystems {
 					}
 				}
 			} finally {
-				if (handle != NativeMethods.INVALID_HANDLE_VALUE) NativeMethods.CloseHandle(handle);
+				if (handle != IOErrors.InvalidFileHandle) NativeMethods.CloseHandle(handle);
 			}
 #else
 			throw null;
@@ -320,52 +287,38 @@ namespace Emet.FileSystems {
 		{
 #if OSTYPE_UNIX
 			if (NativeMethods.unlink(NameToByteArray(path)) < 0) {
-				int errno = Marshal.GetLastWin32Error();
-				if (!DirectoryEntry.IsPassError(errno)) {
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new System.IO.IOException(path + ": " + ci.Message, errno);
-				}
-				return false;
+				var exception = GetExceptionFromLastError(path, true, IOErrors.IsNotADirectory, true);
+				if (exception is null) return false;
+				throw exception;
 			}
 			return true;
 #elif OS_WIN
-			IntPtr handle = NativeMethods.INVALID_HANDLE_VALUE;
+			IntPtr handle = IOErrors.InvalidFileHandle;
 			try {
 				handle = NativeMethods.CreateFileW(path, NativeMethods.FILE_READ_ATTRIBUTES | NativeMethods.DELETE,
 						NativeMethods.FILE_SHARE_READ | NativeMethods.FILE_SHARE_WRITE | NativeMethods.FILE_SHARE_DELETE,
-						IntPtr.Zero, NativeMethods.OPEN_EXISTING, NativeMethods.FILE_FLAG_BACKUP_SEMANTICS, NativeMethods.INVALID_HANDLE_VALUE);
-				if (handle == NativeMethods.INVALID_HANDLE_VALUE)
+						IntPtr.Zero, NativeMethods.OPEN_EXISTING, NativeMethods.FILE_FLAG_BACKUP_SEMANTICS, IOErrors.InvalidFileHandle);
+				if (handle == IOErrors.InvalidFileHandle)
 				{
-					int errno = unchecked(((int)0x80070000) | Marshal.GetLastWin32Error());
-					if (errno != IOErrors.IsADirectory && DirectoryEntry.IsPassError(errno)) return false;
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new System.IO.IOException(path + ": " + ci.Message, errno);
+					var exception = GetExceptionFromLastError(path, true, IOErrors.IsADirectory, true);
+					if (exception is null) return false;
+					throw exception;
 				}
         int status = NativeMethods.NtQueryInformationFile(handle, out NativeMethods.IO_STATUS_BLOCK sb,
 						out NativeMethods.FILE_BASIC_INFORMATION bi,
             Marshal.SizeOf<NativeMethods.FILE_BASIC_INFORMATION>(), NativeMethods.FileBasicInformation);
-        if (status != 0) {
-          int errno = NativeMethods.RtlNtStatusToDosError(status);
-          NativeMethods.SetLastError(errno);
-          var ci = new System.ComponentModel.Win32Exception();
-          throw new IOException(path + ": " + ci.Message, unchecked((int)0x80070000 | errno));
-        }
+        if (status != 0) throw GetExceptionFromNtStatus(status, path, false, 0, false);
 				if ((bi.FileAttributes & (NativeMethods.FILE_ATTRIBUTE_DIRECTORY | NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT))
 						== NativeMethods.FILE_ATTRIBUTE_DIRECTORY) {
 					NativeMethods.SetLastError(IOErrors.IsADirectory & 0xFFFF);
-          var ci = new System.ComponentModel.Win32Exception();
-          throw new IOException(path + ": " + ci.Message, IOErrors.IsADirectory);
+					throw GetExceptionFromLastError(path, false, 0, true);
 				}
 				uint deletepending = 1;
 				if (0 == NativeMethods.SetFileInformationByHandle(handle, NativeMethods.FileDispositionInfo, ref deletepending, 4))
-				{
-					int errno = unchecked(((int)0x80070000) | Marshal.GetLastWin32Error());
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new System.IO.IOException(path + ": " + ci.Message, errno);
-				}
+					throw GetExceptionFromLastError(path, false, 0, true);
 				return true;
 			} finally {
-				if (handle != NativeMethods.INVALID_HANDLE_VALUE) NativeMethods.CloseHandle(handle);
+				if (handle != IOErrors.InvalidFileHandle) NativeMethods.CloseHandle(handle);
 			}
 #else
 			throw null;
@@ -376,40 +329,42 @@ namespace Emet.FileSystems {
 		///<param name="path">The path to the file to be removed</param>
 		///<param name="recurse">Whether or not to remove the directory and all its contents</param>
 		///<returns>true if the file was removed, false if path already didn't exist</returns>
+		///<exception cref="ArgumentException">Removial of a trivial path of a root directory was requested</exception>
 		///<exception cref="System.ArgumentException">Tried to remove a mountpoint on unix systems</exception>
 		///<exception cref="System.InvalidOperationException">A system constraint was found to be violated while descending the directory tree</exception>
 		///<exception cref="System.IO.IOException">An IO error occurred</exception>
+		///<remarks>This routine will not descend symbolc links, and uses an atomic check to prevent this from happening</remarks>
 		public static bool RemoveDirectory(string path, bool recurse)
 #if OSTYPE_UNIX
 				=> RemoveDirectory(NameToByteArray(path), 0, recurse ? 1 : 0, () => path);
 
 		private static bool RemoveDirectory(byte[] path, long parentdevice, int flags, Func<string> builderrorpath)
 		{
+			if (path.Length == 1 || path[0] == '/') throw new ArgumentException("Not removing root directory");
 			while (0 > NativeMethods.rmdir(path))
 			{
 				int errno = Marshal.GetLastWin32Error();
-				if (DirectoryEntry.IsPassError(errno) && errno != IOErrors.IsNotADirectory) return false;
-				if ((flags & 2) != 0 && errno == IOErrors.IsNotADirectory) {
+				if ((flags & 2) != 0 && errno == IOErrors.IsNotADirectory)
+				{
 					if (0 < NativeMethods.unlink(path)) {
-						if (DirectoryEntry.IsPassError(errno)) return false;
-						var ci = new System.ComponentModel.Win32Exception();
-						throw new System.IO.IOException(builderrorpath() + ": " + ci.Message, errno);
+						var exception = GetExceptionFromLastError(builderrorpath, true, IOErrors.FileNotFound, true);
+						if (exception is null) return false;
+						throw exception;
 					}
-					return true;
+				} else if ((flags & 1) == 0 || errno != IOErrors.DirectoryNotEmpty) {
+					var exception = GetExceptionFromLastError(builderrorpath, errno != IOErrors.IsNotADirectory, IOErrors.FileNotFound, true);
+					if (exception is null) return false;
+					throw exception;
 				}
-				if (errno != IOErrors.DirectoryNotEmpty || (flags & 1) == 0) {
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new System.IO.IOException(builderrorpath() + ": " + ci.Message, errno);
-				}
-				bool owns_handle = true;
-				IntPtr dir = IntPtr.Zero; // The compiler can't figure out we can omit these.
+				bool owns_handle = false;
+				IntPtr dir = IntPtr.Zero;
 				IntPtr handle = IntPtr.Zero;
 				try {
 					try {} finally {
 						handle = NativeMethods.open(path, 0);
 						owns_handle = true; // unsplittable
 					}
-					if (handle.ToInt32() >= 0) {
+					if (handle != IOErrors.InvalidFileHandle) {
 						var hinfo = new FileSystemNode(new SafeFileHandle(handle, false));
 						var dinfo = new ByteArrayDirectoryEntry(path, builderrorpath);
 						// Assert it's the same node.
@@ -438,9 +393,7 @@ namespace Emet.FileSystems {
 								readentry.d_name = new byte[256];
 								int result = NativeMethods.readdir64_r(dir, ref readentry, out IntPtr z);
 								if (result < 0) {
-									var errno2 = Marshal.GetLastWin32Error();
-									var ci2 = new System.ComponentModel.Win32Exception();
-									throw new IOException(builderrorpath() + ": " + ci2.Message, errno2);
+									throw GetExceptionFromLastError(builderrorpath, false, 0, true);
 								}
 								if (z == IntPtr.Zero) break;
 								var namelen = readentry.d_reclen;
@@ -472,7 +425,7 @@ namespace Emet.FileSystems {
 								if (namelen == 2 && newpath[newpathbase] == '.' && newpath[newpathbase + 1] == '.') continue;
 								newpath[newpathbase + namelen] = 0;
 								didsomething |= RemoveDirectory(newpath, devicenumber, 3,
-										() => Path.Combine(builderrorpath(), Encoding.UTF8.GetString(newpath, newpathbase, namelen)));
+										() => Path.Combine(builderrorpath(), ByteArrayToName(newpath, newpathbase, namelen)));
 							}
 						} while (didsomething);
 					}
@@ -498,7 +451,7 @@ namespace Emet.FileSystems {
 #endif
 				if (cresult < 0) {
 					int errno = Marshal.GetLastWin32Error();
-					if (!DirectoryEntry.IsPassError(errno)) {
+					if (!IsPassError(errno, 0, true)) {
 						var ci = new System.ComponentModel.Win32Exception();
 						throw new IOException(builderrorpath() + ": " + ci.Message, errno);
 					}
@@ -510,11 +463,22 @@ namespace Emet.FileSystems {
 		}
 #elif OS_WIN
 		{
+			if (path == "") path = "."; // It's gonna fail on trying to delete .
+			if (path == "\\" || path.Length < 4 && path.Length > 1 && path[1] == ':' && (path.Length == 2 || path[2] == '\\' || path[2] == '/')
+					&& (path[0] >= 'A' && path[0] <= 'Z' || path[0] >= 'a' || path[0] <= 'z'))
+				throw new ArgumentException("Not removing root directory"); // Root of a drive
 			int bptr = path.Length - 1;
 			while (--bptr >= 0)
 				if (path[bptr] == '\\' || path[bptr] == '/')
 					break;
-			IntPtr parent = NativeMethods.INVALID_HANDLE_VALUE;
+			if (path.Length > 1 && (path[0] == '\\' || path[0] == '/') && (path[1] == '\\' || path[1] == '/')) {
+				if (bptr <= 2) throw new ArgumentException("Not removing root directory"); // Server root
+				for (int i = 3; path[i] == '\\' || path[i] == '/'; i++)
+					if (i + 1 == bptr)
+						throw new ArgumentException("Not removing root directory"); // Network share root
+			}
+			// The root checks are intended to prevent accident, not malice. \.\ is another root that gets past the check. :(
+			IntPtr parent = IOErrors.InvalidFileHandle;
 			IntPtr nameptr = IntPtr.Zero;
 			IntPtr uptr = IntPtr.Zero;
 			IntPtr dotdot = IntPtr.Zero;
@@ -542,18 +506,17 @@ namespace Emet.FileSystems {
 				uptr = Marshal.AllocHGlobal(Marshal.SizeOf<NativeMethods.UNICODE_STRING>());
 				parent = NativeMethods.CreateFileW(parentname, NativeMethods.FILE_TRAVERSE,
 						NativeMethods.FILE_SHARE_READ | NativeMethods.FILE_SHARE_WRITE | NativeMethods.FILE_SHARE_DELETE, IntPtr.Zero,
-						NativeMethods.OPEN_EXISTING, NativeMethods.FILE_FLAG_BACKUP_SEMANTICS, NativeMethods.INVALID_HANDLE_VALUE);
-				if (parent == NativeMethods.INVALID_HANDLE_VALUE) {
-					int errno = unchecked((int)0x80070000 | Marshal.GetLastWin32Error());
-					if (DirectoryEntry.IsPassError(errno) && errno != IOErrors.IsNotADirectory) return false;
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new System.IO.IOException(path + ": " + ci.Message);
+						NativeMethods.OPEN_EXISTING, NativeMethods.FILE_FLAG_BACKUP_SEMANTICS, IOErrors.InvalidFileHandle);
+				if (parent == IOErrors.InvalidFileHandle) {
+					var exception = GetExceptionFromLastError(parentname, true, IOErrors.IsNotADirectory, true);
+					if (exception is null) return false;
+					throw exception;
 				}
 				return RemoveDirectory(parent, uptr, name, nameptr, namelen, recurse ? 1 : 0, () => parentname);
 			} finally {
 				if (nameptr != IntPtr.Zero) Marshal.FreeHGlobal(nameptr);
 				if (uptr != IntPtr.Zero) Marshal.FreeHGlobal(uptr);
-				if (parent != NativeMethods.INVALID_HANDLE_VALUE) NativeMethods.CloseHandle(parent);
+				if (parent != IOErrors.InvalidFileHandle) NativeMethods.CloseHandle(parent);
 			}
 		}
 
@@ -562,7 +525,7 @@ namespace Emet.FileSystems {
 		{
 			if (namelen > 32767) return false; // It doesn't exist.
 			Func<string> myerrorpath = () => builderrorpath() + "\\" + name; // Can't use Path.Combine; it outsmarts itself
-			IntPtr directory = NativeMethods.INVALID_HANDLE_VALUE;
+			IntPtr directory = IOErrors.InvalidFileHandle;
 			IntPtr buffer = IntPtr.Zero;
 			int step = Marshal.SizeOf<NativeMethods.FILE_DIRECTORY_INFORMATION>();
 			try {
@@ -588,31 +551,24 @@ namespace Emet.FileSystems {
 						(((flags & 4) == 0) ? NativeMethods.FILE_DIRECTORY_FILE : 0) | NativeMethods.FILE_SYNCHRONOUS_IO_NONALERT
 						| NativeMethods.FILE_OPEN_FOR_BACKUP_INTENT | NativeMethods.FILE_OPEN_REPARSE_POINT);
 				if (unchecked(status & (int)0x80000000) != 0) {
-					status = unchecked((int)0x80070000 | NativeMethods.RtlNtStatusToDosError(status));
-					if (status != IOErrors.IsADirectory && DirectoryEntry.IsPassError(status)) return false;
-					NativeMethods.SetLastError(status & 0xFFFF);
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new System.IO.IOException(myerrorpath() + ": " + ci.Message, status);
+					var exception = GetExceptionFromNtStatus(status, builderrorpath, true, IOErrors.IsADirectory, true);
+					if (exception is null) return false;
+					throw exception;
 				}
 				if (status == NativeMethods.STATUS_PENDING)
 					throw new InvalidOperationException("STATUS_PENDING was returned from synchronous open");
 				if (status == NativeMethods.STATUS_REPARSE)
 					throw new InvalidOperationException("STATUS_REPARSE was returned on requesting to open a reparse point");
 				if ((flags & 2) == 0) {
-        	status = NativeMethods.NtQueryInformationFile(directory, out NativeMethods.IO_STATUS_BLOCK sb,
+					status = NativeMethods.NtQueryInformationFile(directory, out NativeMethods.IO_STATUS_BLOCK sb,
 							out NativeMethods.FILE_BASIC_INFORMATION bi,
 	            Marshal.SizeOf<NativeMethods.FILE_BASIC_INFORMATION>(), NativeMethods.FileBasicInformation);
-  	      if (status != 0) {
-    	      int errno = NativeMethods.RtlNtStatusToDosError(status);
-      	    NativeMethods.SetLastError(errno);
-						var ci = new System.ComponentModel.Win32Exception();
-						throw new IOException(myerrorpath() + ": " + ci.Message, unchecked((int)0x80070000 | errno));
-  	      }
+					if (status != 0)
+						throw GetExceptionFromNtStatus(status, myerrorpath, false, 0, false);
 					if ((bi.FileAttributes & (NativeMethods.FILE_ATTRIBUTE_DIRECTORY | NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT))
 							!= NativeMethods.FILE_ATTRIBUTE_DIRECTORY) {
 						NativeMethods.SetLastError(IOErrors.IsNotADirectory & 0xFFFF);
-						var ci = new System.ComponentModel.Win32Exception();
-          	throw new IOException(myerrorpath() + ": " + ci.Message, IOErrors.IsADirectory);
+						throw GetExceptionFromLastError(myerrorpath, false, 0, true);
 					}
 				}
 				for (;;) {
@@ -621,8 +577,7 @@ namespace Emet.FileSystems {
 						return true;
 					int errno = unchecked(((int)0x80070000) | Marshal.GetLastWin32Error());
 					if ((flags & 1) == 0 || errno != IOErrors.DirectoryNotEmpty) {
-						var ci = new System.ComponentModel.Win32Exception();
-						throw new System.IO.IOException(myerrorpath() + ": " + ci.Message, errno);
+						throw GetExceptionFromLastError(myerrorpath, false, 0, true);
 					}
 					bool didsomething;
 					do {
@@ -631,19 +586,15 @@ namespace Emet.FileSystems {
 						for(;;) {
 							status = NativeMethods.NtQueryDirectoryFile(directory, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, out io,
 									buffer, 65536, NativeMethods.FileDirectoryInformation, false, IntPtr.Zero, rewind);
+							if (status == NativeMethods.STATUS_NO_MORE_FILES) break;
 							if (status == NativeMethods.STATUS_PENDING)
 								throw new InvalidOperationException("STATUS_PENDING was returned from synchronous directory read");
 							if (status == NativeMethods.STATUS_INFO_LENGTH_MISMATCH)
 								throw new InvalidOperationException("STATUS_INFO_LENGTH mismatch was returned from directory read");
 							if (status == NativeMethods.STATUS_BUFFER_OVERFLOW)
 								throw new InvalidOperationException("STATUS_BUFFER_OVERFLOW was returned from synchronous directory read but our buffer is 64k");
-							if (status == NativeMethods.STATUS_NO_MORE_FILES) break;
-							if (unchecked(status & (int)0x80000000) != 0) {
-								status = unchecked((int)0x80070000 | NativeMethods.RtlNtStatusToDosError(status));
-								NativeMethods.SetLastError(status & 0xFFFF);
-								var ci = new System.ComponentModel.Win32Exception();
-								throw new System.IO.IOException(myerrorpath() + ": " + ci.Message, errno);
-							}
+							if (unchecked(status & (int)0x80000000) != 0)
+								throw GetExceptionFromNtStatus(status, myerrorpath, false, 0, true);
 							rewind = false;
 							IntPtr nextentry;
 							IntPtr nextentryadjust = buffer;
@@ -667,7 +618,7 @@ namespace Emet.FileSystems {
 					} while (didsomething);
 				}
 			} finally {
-				if (directory != NativeMethods.INVALID_HANDLE_VALUE) NativeMethods.CloseHandle(directory);
+				if (directory != IOErrors.InvalidFileHandle) NativeMethods.CloseHandle(directory);
 				if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer);
 			}
 		}
@@ -686,17 +637,10 @@ namespace Emet.FileSystems {
 			var boldname = NameToByteArray(oldname);
 			var bnewname = NameToByteArray(newname);
 			if (NativeMethods.rename(boldname, bnewname) != 0)
-			{
-				var errno = Marshal.GetLastWin32Error();
-				var ci = new System.ComponentModel.Win32Exception();
-				throw new IOException(ci.Message, errno);
-			}
+				throw GetExceptionFromLastError(oldname, false, 0, true);
 #elif OS_WIN
-			if (0 == NativeMethods.MoveFileEx(oldname, newname, NativeMethods.MOVEFILE_REPLACE_EXISTING)) {
-				var errno = unchecked((int)0x80070000 | Marshal.GetLastWin32Error());
-				var ci = new System.ComponentModel.Win32Exception();
-				throw new IOException(ci.Message, errno);
-			}
+			if (0 == NativeMethods.MoveFileEx(oldname, newname, NativeMethods.MOVEFILE_REPLACE_EXISTING))
+				throw GetExceptionFromLastError(oldname, false, 0, true);
 #else
 			throw null;
 #endif
@@ -749,37 +693,6 @@ namespace Emet.FileSystems {
 		///<exception cref="System.IO.IOException">An IO error occurred</exception>
 		public static bool PathExists(string path)
 			=> new DirectoryEntry(path, FollowSymbolicLinks.Never).FileType != FileType.DoesNotExist;
-
-#if OS_WIN
-		internal static string CharArrayToString(char[] namestring)
-		{
-			int slen = namestring.Length;
-			int len;
-			for (len = 0; len < slen; len++)
-				if (namestring[len] == 0)
-					break;
-			return new string(namestring, 0, len);
-		}
-#endif
-
-#if OSTYPE_UNIX
-		internal static string ByteArrayToName(byte[] namebytes)
-		{
-			int i;
-			for (i = 0; i < namebytes.Length; i++)
-				if (namebytes[i] == 0) break;
-			return Encoding.UTF8.GetString(namebytes, 0, i);
-		}
-
-		internal static byte[] NameToByteArray(string name)
-		{
-			var count = Encoding.UTF8.GetByteCount(name);
-			var bytes = new byte[count + 1];
-			//bytes[count] = 0; // Already done for us.
-			Encoding.UTF8.GetBytes(name, 0, name.Length, bytes, 0);
-			return bytes;
-		}
-#endif
 
 		// List of DirectoryEntiry; this class actually exists so that callers don't take a dependency on downcasting
 		// IEnumerable<DirectoryEntry> to List<DirectoryEntry>.  I've switched back and forth between yield return and

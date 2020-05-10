@@ -1,7 +1,8 @@
 <Project Sdk="MSBuild.Sdk.Extras">
 
   <PropertyGroup>
-    <TargetFramework>netstandard1.6</TargetFramework>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- <BaseIntermediateOutputPath>obj/ref/</BaseIntermediateOutputPath> -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>0414</NoWarn>
     <DebugType>None</DebugType>

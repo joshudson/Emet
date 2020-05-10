@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using static Emet.FileSystems.Util;
 
 namespace Emet.FileSystems {
 	///<summary>Describes a DirectoryEntry</summary>
@@ -103,6 +104,9 @@ namespace Emet.FileSystems {
 			}
 		}
 
+		///<summary>provides the path for generating error messages</summary>
+		protected override string ErrorPath => Path;
+
 		///<summary>Gets the symbolic link behavior the DirectoryEntry was constructed with</summary>
 		public FileSystem.FollowSymbolicLinks FollowSymbolicLinks => symbolic;
 
@@ -139,7 +143,7 @@ namespace Emet.FileSystems {
 		{
 #if OSTYPE_UNIX
 			int cresult;
-			var arg = FileSystem.NameToByteArray(Path);
+			var arg = NameToByteArray(Path);
 #if OS_LINUXX64
 			var statbuf = new NativeMethods.statbuf64();
 			if (symbolic == FileSystem.FollowSymbolicLinks.Always)
@@ -171,11 +175,8 @@ namespace Emet.FileSystems {
 					followerror = true;
 			}
 			if (cresult != 0) {
-				var errno = (int)Marshal.GetLastWin32Error();
-				if (!IsPassError(errno)) {
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new IOException(ci.Message, errno);
-				}
+				var exception = GetExceptionFromLastError(ErrorPath, true, 0, false);
+				if (exception != null) throw exception;
 				if (!followerror) {
 					Clear();
 					type = FileType.DoesNotExist;
@@ -187,7 +188,7 @@ namespace Emet.FileSystems {
 			type = (FileType)(statbuf.st_mode & FileTypeMask);
 			hint = FileType.LinkTargetHintNotAvailable;
 #elif OS_WIN
-			IntPtr handle = NativeMethods.INVALID_HANDLE_VALUE;
+			IntPtr handle = IOErrors.InvalidFileHandle;
 			try {
 				handle = NativeMethods.CreateFileW(Path, NativeMethods.FILE_READ_ATTRIBUTES,
 						NativeMethods.FILE_SHARE_ALL, IntPtr.Zero, NativeMethods.OPEN_EXISTING,
@@ -196,31 +197,25 @@ namespace Emet.FileSystems {
 						? NativeMethods.FILE_FLAG_BACKUP_SEMANTICS
 						: NativeMethods.FILE_FLAG_BACKUP_SEMANTICS | NativeMethods.FILE_FLAG_OPEN_REPARSE_POINT,
 						IntPtr.Zero);
-				if (handle == NativeMethods.INVALID_HANDLE_VALUE) {
-					var errno = unchecked((int)0x80070000 | (int)Marshal.GetLastWin32Error());
-					if (errno != IOErrors.DeletePending && !IsPassError(errno)) {
-						var ci = new System.ComponentModel.Win32Exception();
-						throw new IOException(ci.Message, errno);
-					}
-					IntPtr handle2 = NativeMethods.INVALID_HANDLE_VALUE;
+				if (handle == IOErrors.InvalidFileHandle) {
+					var exception = GetExceptionFromLastError(ErrorPath, true, IOErrors.DeletePending, false);
+					if (exception != null) throw exception;
+					IntPtr handle2 = IOErrors.InvalidFileHandle;
 					try {
 						var ff = new NativeMethods.WIN32_FIND_DATA();
 						handle2 = NativeMethods.FindFirstFileW(Path, out ff);
-						if (handle2 != NativeMethods.INVALID_HANDLE_VALUE) {
+						if (handle2 != IOErrors.InvalidFileHandle) {
 							FillFindDataResult(ref ff);
 							FillMakeStuffUpBecauseInaccessible();
 						} else {
-							var errno2 = unchecked((int)0x80070000 | (int)Marshal.GetLastWin32Error());
-							if (!IsPassError(errno2)) {
-								var ci = new System.ComponentModel.Win32Exception();
-								throw new IOException(ci.Message, errno2);
-							}
+							var exception2 = GetExceptionFromLastError(ErrorPath, true, 0, false);
+							if (exception2 != null) throw exception2;
 							Clear();
 							type = FileType.DoesNotExist;
 							hint = FileType.DoesNotExist;
 						}
 					} finally {
-						if (handle2 != NativeMethods.INVALID_HANDLE_VALUE) NativeMethods.FindClose(handle2);
+						if (handle2 != IOErrors.InvalidFileHandle) NativeMethods.FindClose(handle2);
 					}
 					return;
 				}
@@ -233,17 +228,11 @@ namespace Emet.FileSystems {
 					_Refresh(); // Easiest way to redo stats load
 				}
 			} finally {
-				if (handle != NativeMethods.INVALID_HANDLE_VALUE) NativeMethods.CloseHandle(handle);
+				if (handle != IOErrors.InvalidFileHandle) NativeMethods.CloseHandle(handle);
 			}
 #else
 			throw null;
 #endif
 		}
-
-		internal static bool IsPassError(int errno)
-			=> (errno == IOErrors.FileNotFound || errno == IOErrors.PathNotFound
-				|| errno == IOErrors.IsADirectory || errno == IOErrors.IsNotADirectory
-				|| errno == IOErrors.BadPathName || errno == IOErrors.TooManySymbolicLinks
-				|| errno == IOErrors.PermissionDenied);
 	}
 }

@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
+using static Emet.FileSystems.Util;
 
 namespace Emet.FileSystems {
 	///<summary>Type of file system node</summary>
@@ -43,6 +44,10 @@ namespace Emet.FileSystems {
 		///<summary>Name of the parent directory within the current directory</summary>
 		public static readonly string ParentDirectoryName = "..";
 
+		///<summary>When overridden in a derived class, provides the path for generating error messages</summary>
+		///<remarks>The base implementation just returns null</remarks>
+		protected virtual string ErrorPath => null;
+
 #if OSTYPE_UNIX
 		internal const int FileTypeMask = 0b1_111_000_000_000_000;
 #endif
@@ -79,19 +84,13 @@ namespace Emet.FileSystems {
 				}
 #if OS_LINUXX64
 				var statbuf = new NativeMethods.statbuf64();
-				if (NativeMethods.__fxstat64(NativeMethods.statbuf_version, handle.DangerousGetHandle(), out statbuf) != 0) {
-					var errno = Marshal.GetLastWin32Error();
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new IOException(ci.Message, errno);
-				}
+				if (NativeMethods.__fxstat64(NativeMethods.statbuf_version, handle.DangerousGetHandle(), out statbuf) != 0)
+					throw GetExceptionFromLastError(ErrorPath, false, 0, false);
 				FillStatResult(ref statbuf);
 #elif OS_MACOSX64
 				var statbuf = new NativeMethods.statbuf();
-				if (NativeMethods.fstat(handle.DangerousGetHandle(), out statbuf) != 0) {
-					var errno = Marshal.GetLastWin32Error();
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new IOException(ci.Message, errno);
-				}
+				if (NativeMethods.fstat(handle.DangerousGetHandle(), out statbuf) != 0)
+					throw GetExceptionFromLastError(ErrorPath, false, 0, false);
 				FillStatResult(ref statbuf);
 #elif OS_WIN
 				LoadFromHandle(handle.DangerousGetHandle());
@@ -122,11 +121,6 @@ namespace Emet.FileSystems {
 		}
 
 #if OSTYPE_UNIX
-		internal static DateTime UnixTimeToDateTime(long seconds, ulong nanoseconds)
-			=> NativeMethods.Epoch.AddTicks(
-				unchecked(seconds * TimeSpan.TicksPerSecond
-								+ (long)nanoseconds * TimeSpan.TicksPerMillisecond / 1000000));
-
 #if OS_LINUXX64
 		internal void FillStatResult(ref NativeMethods.statbuf64 statbuf)
 		{
@@ -202,10 +196,8 @@ namespace Emet.FileSystems {
 					Marshal.SizeOf<NativeMethods.FILE_FS_VOLUME_INFORMATION>(), NativeMethods.FileFsVolumeInformation);
 			if (errno != 0) errno = NativeMethods.RtlNtStatusToDosError(errno);
 			if (errno != 0 && errno != (IOErrors.InsufficientBuffer & 0xFFFF) && errno != IOErrors.ERROR_MORE_DATA) {
-Console.WriteLine(errno);
 				NativeMethods.SetLastError(errno);
-				var ci = new System.ComponentModel.Win32Exception();
-				throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
+				throw GetExceptionFromLastError(ErrorPath, false, 0, false);
 			}
 			errno = NativeMethods.NtQueryInformationFile(handle, out io, out all,
 					Marshal.SizeOf<NativeMethods.FILE_ALL_INFORMATION>(), NativeMethods.FileAllInformation);
@@ -214,28 +206,13 @@ Console.WriteLine(errno);
 				// Broken filesystem -- try the slow way
 				errno = NativeMethods.NtQueryInformationFile(handle, out io, out all.StandardInformation,
 						Marshal.SizeOf<NativeMethods.FILE_STANDARD_INFORMATION>(), NativeMethods.FileStandardInformation);
-				if (errno != 0) {
-					errno = NativeMethods.RtlNtStatusToDosError(errno);
-					NativeMethods.SetLastError(errno);
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
-				}
+				if (errno != 0) throw GetExceptionFromNtStatus(errno, ErrorPath, false, 0, false);
 				errno = NativeMethods.NtQueryInformationFile(handle, out io, out all.BasicInformation,
 						Marshal.SizeOf<NativeMethods.FILE_BASIC_INFORMATION>(), NativeMethods.FileBasicInformation);
-				if (errno != 0) {
-					errno = NativeMethods.RtlNtStatusToDosError(errno);
-					NativeMethods.SetLastError(errno);
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
-				}
+				if (errno != 0) throw GetExceptionFromNtStatus(errno, ErrorPath, false, 0, false);
 				errno = NativeMethods.NtQueryInformationFile(handle, out io, out all.InternalInformation,
 						Marshal.SizeOf<NativeMethods.FILE_INTERNAL_INFORMATION>(), NativeMethods.FileInternalInformation);
-				if (errno != 0) {
-					errno = NativeMethods.RtlNtStatusToDosError(errno);
-					NativeMethods.SetLastError(errno);
-					var ci = new System.ComponentModel.Win32Exception();
-					throw new IOException(ci.Message, unchecked((int)0x80070000 | errno));
-				}
+				if (errno != 0) throw GetExceptionFromNtStatus(errno, ErrorPath, false, 0, false);
 			}
 			birthTime = UlongToDateTime(all.BasicInformation.CreationTime);
 			lastAccessTime = UlongToDateTime(all.BasicInformation.LastAccessTime);
@@ -259,8 +236,7 @@ Console.WriteLine(errno);
 							buflen <<= 1;
 							continue; // Here's where we go around the loop
 						}
-						var ci = new System.ComponentModel.Win32Exception();
-						throw new IOException(ci.Message, unchecked((int)0x80070000 | errno2));
+						throw GetExceptionFromLastError(ErrorPath, false, 0, false);
 					}
 					GCHandle gch;
 					try {
@@ -278,13 +254,6 @@ Console.WriteLine(errno);
 			loaded2 = true;
 			return all.BasicInformation.FileAttributes;
 		}
-
-		internal static DateTime FileTimeToDateTime(NativeMethods.FILETIME filetime)
-			=> UlongToDateTime(((ulong)filetime.dwHighDateTime) << 32 | filetime.dwLowDateTime);
-
-		internal static DateTime UlongToDateTime(ulong datetime)
-			// Documentation literally says 100ns in both places
-			=> NativeMethods.Epoch.AddTicks((long)datetime);
 #endif
 
 		private SafeFileHandle reference;
