@@ -5,7 +5,7 @@
     <RuntimeIdentifiers>linux-x64;win;osx-x64</RuntimeIdentifiers>
     <ExtrasBuildEachRuntimeIdentifier>true</ExtrasBuildEachRuntimeIdentifier>
     <DebugType>None</DebugType>
-    <VersionPrefix>0.0.2</VersionPrefix>
+    <VersionPrefix>0.0.3</VersionPrefix>
     <LangVersion>8.0</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Authors>Joshua Hudson &lt;joshudson@gmail.com&gt;</Authors>
