@@ -329,30 +329,36 @@ namespace Emet.FileSystems {
 		///<param name="path">The path to the file to be removed</param>
 		///<param name="recurse">Whether or not to remove the directory and all its contents</param>
 		///<returns>true if the file was removed, false if path already didn't exist</returns>
-		///<exception cref="ArgumentException">Removial of a trivial path of a root directory was requested</exception>
-		///<exception cref="System.ArgumentException">Tried to remove a mountpoint on unix systems</exception>
+		///<exception cref="System.ArgumentException">Removial of a trivial path of a root directory was requested</exception>
 		///<exception cref="System.InvalidOperationException">A system constraint was found to be violated while descending the directory tree</exception>
+		///<exception cref="System.NotImplementedException">Tried to remove a mountpoint on unix systems</exception>
 		///<exception cref="System.IO.IOException">An IO error occurred</exception>
 		///<remarks>This routine will not descend symbolc links, and uses an atomic check to prevent this from happening</remarks>
 		public static bool RemoveDirectory(string path, bool recurse)
 #if OSTYPE_UNIX
-				=> RemoveDirectory(NameToByteArray(path), 0, recurse ? 1 : 0, () => path);
-
-		private static bool RemoveDirectory(byte[] path, long parentdevice, int flags, Func<string> builderrorpath)
 		{
-			if (path.Length == 1 || path[0] == '/') throw new ArgumentException("Not removing root directory");
+				var name = NameToByteArray(path);
+				var epb = new ErrorPathBuilder();
+				bool pushed = false;
+				epb.Push(name, 0, name.Length, ref pushed);
+				return RemoveDirectory(name, 0, recurse ? 1 : 0, epb);
+		}
+
+		private static bool RemoveDirectory(byte[] path, long parentdevice, int flags, ErrorPathBuilder errorpath)
+		{
+			if (path.Length == 1 && path[0] == '/') throw new ArgumentException("Not removing root directory");
 			while (0 > NativeMethods.rmdir(path))
 			{
 				int errno = Marshal.GetLastWin32Error();
 				if ((flags & 2) != 0 && errno == IOErrors.IsNotADirectory)
 				{
 					if (0 < NativeMethods.unlink(path)) {
-						var exception = GetExceptionFromLastError(builderrorpath, true, IOErrors.FileNotFound, true);
+						var exception = GetExceptionFromLastError(errorpath.ToString, true, IOErrors.FileNotFound, true);
 						if (exception is null) return false;
 						throw exception;
 					}
 				} else if ((flags & 1) == 0 || errno != IOErrors.DirectoryNotEmpty) {
-					var exception = GetExceptionFromLastError(builderrorpath, errno != IOErrors.IsNotADirectory, IOErrors.FileNotFound, true);
+					var exception = GetExceptionFromLastError(errorpath.ToString, errno != IOErrors.IsNotADirectory, IOErrors.FileNotFound, true);
 					if (exception is null) return false;
 					throw exception;
 				}
@@ -366,7 +372,7 @@ namespace Emet.FileSystems {
 					}
 					if (handle != IOErrors.InvalidFileHandle) {
 						var hinfo = new FileSystemNode(new SafeFileHandle(handle, false));
-						var dinfo = new ByteArrayDirectoryEntry(path, builderrorpath);
+						var dinfo = new ByteArrayDirectoryEntry(path, errorpath);
 						// Assert it's the same node.
 						if (dinfo.FileType == FileType.DoesNotExist) return true; // It's already gone.
 						if (dinfo.DeviceNumber != hinfo.DeviceNumber || dinfo.InodeNumber != hinfo.InodeNumber)
@@ -374,7 +380,7 @@ namespace Emet.FileSystems {
 							              // Note that if we're inside a recursive call, the next pass will get it.
 						long devicenumber = hinfo.DeviceNumber;
 						if ((flags & 2) != 0 && parentdevice != devicenumber)
-							throw new ArgumentException(builderrorpath() + ": Tried to remove a mountpoint");
+							throw new NotImplementedException(errorpath.ToString() + ": Tried to remove a mountpoint");
 						string pathbase = "/proc/self/fd/" + handle.ToInt32().ToString(System.Globalization.CultureInfo.InvariantCulture) + "/";
 						var newpathbase = pathbase.Length;
 						var newpath = new byte[newpathbase + 256];
@@ -392,9 +398,8 @@ namespace Emet.FileSystems {
 								var readentry = new NativeMethods.dirent64();
 								readentry.d_name = new byte[256];
 								int result = NativeMethods.readdir64_r(dir, ref readentry, out IntPtr z);
-								if (result < 0) {
-									throw GetExceptionFromLastError(builderrorpath, false, 0, true);
-								}
+								if (result < 0)
+									throw GetExceptionFromLastError(errorpath.ToString, false, 0, true);
 								if (z == IntPtr.Zero) break;
 								var namelen = readentry.d_reclen;
 #else
@@ -403,7 +408,7 @@ namespace Emet.FileSystems {
 									var errno2 = Marshal.GetLastWin32Error();
 									if (errno2 == 0) break;
 									var ci2 = new System.ComponentModel.Win32Exception();
-									throw new IOException(builderrorpath() + ": " + ci2.Message, errno2);
+									throw new IOException(errorpath.ToString() + ": " + ci2.Message, errno2);
 								}
 								var readentry = Marshal.PtrToStructure<NativeMethods.dirent>(result);
 								var namelen = readentry.d_namelen;
@@ -424,8 +429,13 @@ namespace Emet.FileSystems {
 								if (namelen == 1 && newpath[newpathbase] == '.') continue;
 								if (namelen == 2 && newpath[newpathbase] == '.' && newpath[newpathbase + 1] == '.') continue;
 								newpath[newpathbase + namelen] = 0;
-								didsomething |= RemoveDirectory(newpath, devicenumber, 3,
-										() => Path.Combine(builderrorpath(), ByteArrayToName(newpath, newpathbase, namelen)));
+								bool pushed = false;
+								try {
+									errorpath.Push(newpath, newpathbase, namelen, ref pushed);
+									didsomething |= RemoveDirectory(newpath, devicenumber, 3, errorpath);
+								} finally {
+									errorpath.Pop(pushed);
+								}
 							}
 						} while (didsomething);
 					}
@@ -440,7 +450,7 @@ namespace Emet.FileSystems {
 
 		private class ByteArrayDirectoryEntry : FileSystemNode
 		{
-			internal ByteArrayDirectoryEntry(byte[] bytepath, Func<string> builderrorpath) : base(null)
+			internal ByteArrayDirectoryEntry(byte[] bytepath, ErrorPathBuilder builder) : base(null)
 			{
 #if OS_LINUXX64
 				var statbuf = new NativeMethods.statbuf64();
@@ -450,11 +460,8 @@ namespace Emet.FileSystems {
 				var cresult = NativeMethods.lstat(bytepath, out statbuf);
 #endif
 				if (cresult < 0) {
-					int errno = Marshal.GetLastWin32Error();
-					if (!IsPassError(errno, 0, true)) {
-						var ci = new System.ComponentModel.Win32Exception();
-						throw new IOException(builderrorpath() + ": " + ci.Message, errno);
-					}
+					var exception = GetExceptionFromLastError(builder.ToString, true, 0, true);
+					if (exception is IOException) throw exception;
 					Clear();
 				} else {
 					FillStatResult(ref statbuf);
@@ -512,7 +519,7 @@ namespace Emet.FileSystems {
 					if (exception is null) return false;
 					throw exception;
 				}
-				return RemoveDirectory(parent, uptr, name, nameptr, namelen, recurse ? 1 : 0, () => parentname);
+				return RemoveDirectory(parent, uptr, nameptr, namelen, recurse ? 1 : 0, new ErrorPathBuilder(parentname));
 			} finally {
 				if (nameptr != IntPtr.Zero) Marshal.FreeHGlobal(nameptr);
 				if (uptr != IntPtr.Zero) Marshal.FreeHGlobal(uptr);
@@ -520,16 +527,16 @@ namespace Emet.FileSystems {
 			}
 		}
 
-		private static bool RemoveDirectory(IntPtr parent, IntPtr uptr, string name, IntPtr nameptr, int namelen,
-				int flags, Func<string> builderrorpath)
+		private static bool RemoveDirectory(IntPtr parent, IntPtr uptr, IntPtr nameptr, int namelen,
+				int flags, ErrorPathBuilder errorpath)
 		{
 			if (namelen > 32767) return false; // It doesn't exist.
-			Func<string> myerrorpath = () => builderrorpath() + "\\" + name; // Can't use Path.Combine; it outsmarts itself
 			IntPtr directory = IOErrors.InvalidFileHandle;
 			IntPtr buffer = IntPtr.Zero;
 			int step = Marshal.SizeOf<NativeMethods.FILE_DIRECTORY_INFORMATION>();
+			bool pushed = false;
 			try {
-				try {} finally { buffer = Marshal.AllocHGlobal(65536); }
+				errorpath.Push(nameptr, namelen, ref pushed);
 				NativeMethods.IO_STATUS_BLOCK io;
 				NativeMethods.UNICODE_STRING ustr;
 				NativeMethods.OBJECT_ATTRIBUTES attributes;
@@ -551,7 +558,7 @@ namespace Emet.FileSystems {
 						(((flags & 4) == 0) ? NativeMethods.FILE_DIRECTORY_FILE : 0) | NativeMethods.FILE_SYNCHRONOUS_IO_NONALERT
 						| NativeMethods.FILE_OPEN_FOR_BACKUP_INTENT | NativeMethods.FILE_OPEN_REPARSE_POINT);
 				if (unchecked(status & (int)0x80000000) != 0) {
-					var exception = GetExceptionFromNtStatus(status, builderrorpath, true, IOErrors.IsADirectory, true);
+					var exception = GetExceptionFromNtStatus(status, errorpath.ToString, true, IOErrors.IsADirectory, true);
 					if (exception is null) return false;
 					throw exception;
 				}
@@ -564,11 +571,11 @@ namespace Emet.FileSystems {
 							out NativeMethods.FILE_BASIC_INFORMATION bi,
 	            Marshal.SizeOf<NativeMethods.FILE_BASIC_INFORMATION>(), NativeMethods.FileBasicInformation);
 					if (status != 0)
-						throw GetExceptionFromNtStatus(status, myerrorpath, false, 0, false);
+						throw GetExceptionFromNtStatus(status, errorpath.ToString, false, 0, false);
 					if ((bi.FileAttributes & (NativeMethods.FILE_ATTRIBUTE_DIRECTORY | NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT))
 							!= NativeMethods.FILE_ATTRIBUTE_DIRECTORY) {
 						NativeMethods.SetLastError(IOErrors.IsNotADirectory & 0xFFFF);
-						throw GetExceptionFromLastError(myerrorpath, false, 0, true);
+						throw GetExceptionFromLastError(errorpath.ToString, false, 0, true);
 					}
 				}
 				for (;;) {
@@ -577,8 +584,9 @@ namespace Emet.FileSystems {
 						return true;
 					int errno = unchecked(((int)0x80070000) | Marshal.GetLastWin32Error());
 					if ((flags & 1) == 0 || errno != IOErrors.DirectoryNotEmpty) {
-						throw GetExceptionFromLastError(myerrorpath, false, 0, true);
+						throw GetExceptionFromLastError(errorpath.ToString, false, 0, true);
 					}
+					try {} finally { if (buffer == IntPtr.Zero) buffer = Marshal.AllocHGlobal(65536); }
 					bool didsomething;
 					do {
 						didsomething = false;
@@ -590,11 +598,13 @@ namespace Emet.FileSystems {
 							if (status == NativeMethods.STATUS_PENDING)
 								throw new InvalidOperationException("STATUS_PENDING was returned from synchronous directory read");
 							if (status == NativeMethods.STATUS_INFO_LENGTH_MISMATCH)
-								throw new InvalidOperationException("STATUS_INFO_LENGTH mismatch was returned from directory read");
+								throw new InvalidOperationException("STATUS_INFO_LENGTH_MISMATCH mismatch was returned from directory read");
 							if (status == NativeMethods.STATUS_BUFFER_OVERFLOW)
 								throw new InvalidOperationException("STATUS_BUFFER_OVERFLOW was returned from synchronous directory read but our buffer is 64k");
 							if (unchecked(status & (int)0x80000000) != 0)
-								throw GetExceptionFromNtStatus(status, myerrorpath, false, 0, true);
+								throw GetExceptionFromNtStatus(status, errorpath.ToString, false, 0, true);
+							if (io.Information == UIntPtr.Zero)
+								throw new InvalidOperationException("No bytes were returned from synchronous directory read but our buffer is 64k and status doesn't indicate an error and is not STATUS_NO_MORE_FILES");
 							rewind = false;
 							IntPtr nextentry;
 							IntPtr nextentryadjust = buffer;
@@ -604,13 +614,12 @@ namespace Emet.FileSystems {
 								if (thisentry.FileNameLength >= 65536) throw new InvalidOperationException("Maximum OS file name length exceeded");
 								int thisnamelen = (int)(thisentry.FileNameLength >> 1);
 								if (thisnamelen == 0) throw new InvalidOperationException("File with the null name encountered");
-								string entryname = Marshal.PtrToStringUni(nextentry + step, thisnamelen);
-								if (entryname != "." &&  entryname != "..") {
-									if (entryname.Contains('\\')) throw new InvalidOperationException("File with a \\ in the name encountered");
-									didsomething |= RemoveDirectory(directory, uptr, entryname, nextentry + step, thisnamelen,
+								if (IsAnyChar(nextentry + step, thisnamelen, '\\')) throw new InvalidOperationException("File with a \\ in the name encountered");
+								if (!((thisnamelen == 1 || thisnamelen == 2) && AreAllChar(nextentry + step, thisnamelen, '.'))) {
+									didsomething |= RemoveDirectory(directory, uptr, nextentry + step, thisnamelen,
 										((thisentry.FileAttributes & (NativeMethods.FILE_ATTRIBUTE_DIRECTORY | NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT))
 												== NativeMethods.FILE_ATTRIBUTE_DIRECTORY)
-										? 3 : 6, myerrorpath);
+										? 3 : 6, errorpath);
 								}
 								nextentryadjust = nextentry + (int)thisentry.NextEntryOffset;
 							} while (nextentry != nextentryadjust);
@@ -620,6 +629,7 @@ namespace Emet.FileSystems {
 			} finally {
 				if (directory != IOErrors.InvalidFileHandle) NativeMethods.CloseHandle(directory);
 				if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer);
+				errorpath.Pop(pushed);
 			}
 		}
 #else

@@ -7,7 +7,7 @@
     <DebugType>None</DebugType>
     <VersionPrefix>0.0.2</VersionPrefix>
     <LangVersion>8.0</LangVersion>
-    <AllowUnsafe>true</AllowUnsafe>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Authors>Joshua Hudson &lt;joshudson@gmail.com&gt;</Authors>
     <Copyright>2018-2020</Copyright>
     <Description>Replacement File Information APIs for .NET Core supporting symbolic links</Description>

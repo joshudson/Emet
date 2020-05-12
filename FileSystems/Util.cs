@@ -2,9 +2,10 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using Encoding = System.Text.Encoding;
+using Marshal = System.Runtime.InteropServices.Marshal;
 using StringBuilder = System.Text.StringBuilder;
 
 namespace Emet.FileSystems {
@@ -26,6 +27,62 @@ namespace Emet.FileSystems {
 				if (namestring[len] == 0)
 					break;
 			return new string(namestring, 0, len);
+		}
+
+		internal sealed class ErrorPathBuilder {
+			private string parent;
+			private List<KeyValuePair<IntPtr, int>> values;
+
+			internal ErrorPathBuilder(string parent) {
+				this.parent = parent;
+				this.values = new List<KeyValuePair<IntPtr, int>>();
+			}
+
+			internal void Push(IntPtr str, int len, ref bool added)
+			{
+				try {} finally {
+					values.Add(new KeyValuePair<IntPtr, int>(str, len));
+					added = true;
+				}
+			}
+
+			internal void Pop(bool added) { if (added) values.RemoveAt(values.Count - 1); }
+
+			public unsafe override string ToString()
+			{
+				int wlen = parent.Length;
+				foreach (var kv in values)
+					wlen += 1 + kv.Value;
+				var data = new char[wlen];
+				int offset = parent.Length;
+				parent.CopyTo(0, data, 0,  offset);
+				foreach (var kv in values) {
+					data[offset++] = '\\';
+					char *s = (char *)kv.Key.ToPointer();
+					int ln = kv.Value;
+					while ((ln--) > 0)
+						data[offset++] = *s++;
+				}
+				return new string(data);
+			}
+		}
+
+		internal static unsafe bool IsAnyChar(IntPtr str, int len, char c)
+		{
+			char *s = (char*)str.ToPointer();
+			for (; len-- > 0; s++)
+				if (*s == c)
+					return true;
+			return false;
+		}
+
+		internal static unsafe bool AreAllChar(IntPtr str, int len, char c)
+		{
+			char *s = (char*)str.ToPointer();
+			for (; len-- > 0; s++)
+				if (*s != c)
+					return false;
+			return true;
 		}
 #endif
 
@@ -53,6 +110,47 @@ namespace Emet.FileSystems {
 			Encoding.UTF8.GetBytes(name, 0, name.Length, bytes, 0);
 			return bytes;
 		}
+
+		internal sealed class ErrorPathBuilder {
+			private struct Triplet {
+				internal byte[] Bytes { get; }
+				internal int Offset { get; }
+				internal int Length { get; }
+				internal Triplet(byte[] bytes, int offset, int length)
+				{
+					Bytes = bytes;
+					Offset = offset;
+					Length = length;
+				}
+			}
+			private List<Triplet> values = new List<Triplet>();
+
+			internal void Push(byte[] str, int offset, int len, ref bool added)
+			{
+				try {} finally {
+					values.Add(new Triplet(str, offset, len));
+					added = true;
+				}
+			}
+
+			internal void Pop(bool added) { if (added) values.RemoveAt(values.Count - 1); }
+
+			public override string ToString()
+			{
+				if (values.Count == 0) return string.Empty;
+				int wlen = -1;
+				foreach (var t in values)
+					wlen += 1 + Encoding.UTF8.GetCharCount(t.Bytes, t.Offset, t.Length);
+				var data = new char[wlen];
+				int offset = 0;
+				foreach (var t in values) {
+					if (offset != 0) data[offset++] = '/';
+					offset += Encoding.UTF8.GetChars(t.Bytes, t.Offset, t.Length, data, offset);
+				}
+				return new string(data);
+			}
+		}
+
 #endif
 
 		internal static bool IsPassError(int errno, int keep, bool writing)
