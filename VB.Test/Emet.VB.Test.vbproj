@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp1.0</TargetFramework>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <Copyright>2020</Copyright>
+    <Description>Extra support methods for VB</Description>
+    <PackageProjectUrl>https://github.com/joshudson/Emet</PackageProjectUrl>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <NoWarn>1591</NoWarn>
+    <OutputType>exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../VB/Emet.VB.csproj"/>
+  </ItemGroup>
+</Project>
