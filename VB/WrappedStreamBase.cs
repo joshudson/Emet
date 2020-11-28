@@ -22,9 +22,11 @@ namespace Emet.VB {
   	  [MethodImpl(MethodImplOptions.AggressiveInlining)] set;
 		}
 
+#if NET45 || NET10
 		// Turns out these don't even allocate memory.
 		protected static Task<bool> TrueResult { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; } = Task.FromResult(true);
 		protected static Task<bool> FalseResult { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; } = Task.FromResult(false);
+#endif
 
 		protected WrappedStreamBase(Stream backingStream) => this.BackingStream = backingStream;
 
@@ -35,10 +37,19 @@ namespace Emet.VB {
 		protected virtual void AdjustAfterReadFailed(IOException ex) {}
 		protected virtual void AdjustAfterWriteFailed(IOException ex) {}
 
+#if NET45 || NET10
+
 		protected virtual Task<int> AdjustBeforeReadAsync(int size, CancellationToken cancellationToken) { AdjustBeforeRead(ref size); return Task.FromResult(size); }
 		protected virtual Task<int> AdjustBeforeWriteAsync(int size, CancellationToken cancellationToken) { AdjustBeforeWrite(ref size); return Task.FromResult(size); }
 		protected virtual Task<bool> AdjustAfterReadAsync(int size, int rqsize, CancellationToken cancellationToken) { AdjustAfterRead(size, rqsize); return FalseResult; }
+#if NET45
+#pragma warning disable 1998
+		protected virtual async Task AdjustAfterWriteAsync(int size, CancellationToken cancellationToken) { AdjustAfterWrite(size); }
+#pragma warning restore 1998
+#else
 		protected virtual Task AdjustAfterWriteAsync(int size, CancellationToken cancellationToken) { AdjustAfterWrite(size); return Task.CompletedTask; }
+#endif
+#endif
 
 		protected virtual void AdjustAfterReadCanceled(OperationCanceledException ex) {}
 		protected virtual void AdjustAfterWriteCanceled(OperationCanceledException ex) {}
@@ -88,6 +99,7 @@ namespace Emet.VB {
 		}
 #endif
 
+#if NET45 || NET10
 		public async override Task<int> ReadAsync(byte[] buffer, int offset, int size, CancellationToken cancellationToken = default)
 		{
 			int accum = 0;
@@ -110,6 +122,7 @@ namespace Emet.VB {
 			}
 			return accum;
 		}
+#endif
 
 #if NET30
 		public async override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
@@ -181,6 +194,7 @@ namespace Emet.VB {
 		}
 #endif
 
+#if NET45 || NET10
 		public async override Task WriteAsync(byte[] buffer, int offset, int size, CancellationToken cancellationToken = default)
 		{
 			try {
@@ -201,6 +215,7 @@ namespace Emet.VB {
 				throw;
 			}
 		}
+#endif
 
 #if NET30
 		public async override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
@@ -227,7 +242,7 @@ namespace Emet.VB {
 
 		public override void Flush() => BackingStream.Flush();
 
-#if NET20
+#if NET20 || NET40
 		public override void Close() => BackingStream?.Close();
 #endif
 
