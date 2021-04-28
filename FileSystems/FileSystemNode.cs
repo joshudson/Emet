@@ -83,14 +83,20 @@ namespace Emet.FileSystems {
 					Clear();
 				}
 #if OS_LINUXX64
+				IOException ex;
 				var statbuf = new NativeMethods.statbuf64();
-				if (NativeMethods.__fxstat64(NativeMethods.statbuf_version, handle.DangerousGetHandle(), out statbuf) != 0)
-					throw GetExceptionFromLastError(ErrorPath, false, 0, false);
+				while (IsEIntrSyscallReturnOrException(
+					NativeMethods.__fxstat64(NativeMethods.statbuf_version, handle.DangerousGetHandle(), out statbuf),
+					ErrorPath, false, 0, false, out ex));
+				if (ex is not null) throw ex;
 				FillStatResult(ref statbuf);
 #elif OS_MACOSX64
+				IOException ex;
 				var statbuf = new NativeMethods.statbuf();
-				if (NativeMethods.fstat(handle.DangerousGetHandle(), out statbuf) != 0)
-					throw GetExceptionFromLastError(ErrorPath, false, 0, false);
+				while (IsEIntrSyscallReturnOrException(
+					NativeMethods.fstat(handle.DangerousGetHandle(), out statbuf),
+					ErrorPath, false, 0, false, out ex));
+				if (ex is not null) throw ex;
 				FillStatResult(ref statbuf);
 #elif OS_WIN
 				LoadFromHandle(handle.DangerousGetHandle());

@@ -64,6 +64,7 @@ namespace Emet.FileSystems {
 					throw exception;
 				}
 				// Windows refuses to document that deleting the node from FindNextFile is safe.
+				// Update: it isn't. Observed lived that deleting the node will occasionally cause a future entry to be skipped.
 				var l = new DirectoryEntryList();
 				do {
 					var dname = ff.cFileName;
@@ -151,9 +152,11 @@ namespace Emet.FileSystems {
 #if OSTYPE_UNIX
 			var btargetpath = NameToByteArray(targetpath);
 			var blinkpath = NameToByteArray(linkpath);
-			if (NativeMethods.link(btargetpath, blinkpath) != 0) {
-				throw GetExceptionFromLastError(linkpath, false, 0, true);
-			}
+			IOException ex;
+			while (IsEIntrSyscallReturnOrException(
+				NativeMethods.link(btargetpath, blinkpath),
+				linkpath, false, 0, true, out ex));
+			if (ex is not null) throw ex;
 #elif OS_WIN
 			if (0 == NativeMethods.CreateHardLinkW(linkpath, targetpath, IntPtr.Zero)) {
 				throw GetExceptionFromLastError(linkpath, false, 0, true);
@@ -175,9 +178,11 @@ namespace Emet.FileSystems {
 #if OSTYPE_UNIX
 			var btargetpath = NameToByteArray(targetpath);
 			var blinkpath = NameToByteArray(linkpath);
-			if (NativeMethods.symlink(btargetpath, blinkpath) != 0) {
-				throw GetExceptionFromLastError(linkpath, false, 0, true);
-			}
+			IOException ex;
+			while (IsEIntrSyscallReturnOrException(
+				NativeMethods.symlink(btargetpath, blinkpath),
+				linkpath, false, 0, true, out ex));
+			if (ex is not null) throw ex;
 #elif OS_WIN
 			uint flags = 0;
 			if (targethint != FileType.File && targethint != FileType.Directory) {
@@ -226,10 +231,11 @@ namespace Emet.FileSystems {
 			do {
 				buflen <<= 1;
 				results = new byte[buflen];
-				result = NativeMethods.readlink(blinkpath, results, results.Length);
-				if (result < 0) {
-					throw GetExceptionFromLastError(path, false, 0, false);
-				}
+				IOException exception;
+				do {
+					result = NativeMethods.readlink(blinkpath, results, results.Length);
+				} while (IsEIntrSyscallReturnOrException(result, path, false, 0, false, out exception));
+				if (exception is object) throw exception;
 				// Documentation suggests we should never go around this loop but ...
 			} while (result == buflen);
 			results[result] = 0;
@@ -286,7 +292,12 @@ namespace Emet.FileSystems {
 		public static bool RemoveFile(string path)
 		{
 #if OSTYPE_UNIX
-			if (NativeMethods.unlink(NameToByteArray(path)) < 0) {
+			var bpath = NameToByteArray(path);
+			int cresult;
+			do {
+				cresult = NativeMethods.unlink(bpath);
+			} while (IsEIntrSyscallReturn(cresult));
+			if (cresult < 0) {
 				var exception = GetExceptionFromLastError(path, true, IOErrors.IsNotADirectory, true);
 				if (exception is null) return false;
 				throw exception;
@@ -350,9 +361,11 @@ namespace Emet.FileSystems {
 			while (0 > NativeMethods.rmdir(path))
 			{
 				int errno = Marshal.GetLastWin32Error();
+				if (errno == IOErrors.Interrupted) continue;
 				if ((flags & 2) != 0 && errno == IOErrors.IsNotADirectory)
 				{
 					if (0 < NativeMethods.unlink(path)) {
+						if (Marshal.GetLastWin32Error() == IOErrors.Interrupted) continue;
 						var exception = GetExceptionFromLastError(errorpath.ToString, true, IOErrors.FileNotFound, true);
 						if (exception is null) return false;
 						throw exception;
@@ -367,7 +380,9 @@ namespace Emet.FileSystems {
 				IntPtr handle = IntPtr.Zero;
 				try {
 					try {} finally {
-						handle = NativeMethods.open(path, 0);
+						do {
+							handle = NativeMethods.open(path, 0);
+						} while (handle == IOErrors.InvalidFileHandle && Marshal.GetLastWin32Error() == IOErrors.Interrupted);
 						owns_handle = true; // unsplittable
 					}
 					if (handle != IOErrors.InvalidFileHandle) {
@@ -441,7 +456,14 @@ namespace Emet.FileSystems {
 					}
 				} finally {
 					if (dir != IntPtr.Zero) NativeMethods.closedir(dir);
+#if OS_MACOSX64
+					// This is in very bad taste of Apple
+					if (owns_handle)
+						while (NativeMethods.close(handle) < 0 && Marshal.GetLastWin32Error() == IOErrors.Interrupted)
+							;
+#else
 					if (owns_handle) NativeMethods.close(handle);
+#endif
 				}
 				// Go back around and try to remove it again. If it's still not empty, somebody's trying to fill it. Be stubborn.
 			}
@@ -461,7 +483,7 @@ namespace Emet.FileSystems {
 #endif
 				if (cresult < 0) {
 					var exception = GetExceptionFromLastError(builder.ToString, true, 0, true);
-					if (exception is IOException) throw exception;
+					if (exception is not null) throw exception;
 					Clear();
 				} else {
 					FillStatResult(ref statbuf);
@@ -646,8 +668,9 @@ namespace Emet.FileSystems {
 #if OSTYPE_UNIX
 			var boldname = NameToByteArray(oldname);
 			var bnewname = NameToByteArray(newname);
-			if (NativeMethods.rename(boldname, bnewname) != 0)
-				throw GetExceptionFromLastError(oldname, false, 0, true);
+			IOException ex;
+			while (IsEIntrSyscallReturnOrException(NativeMethods.rename(boldname, bnewname), oldname, false, 0, true, out ex));
+			if (ex is not null) throw ex;
 #elif OS_WIN
 			if (0 == NativeMethods.MoveFileEx(oldname, newname, NativeMethods.MOVEFILE_REPLACE_EXISTING))
 				throw GetExceptionFromLastError(oldname, false, 0, true);

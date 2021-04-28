@@ -151,6 +151,26 @@ namespace Emet.FileSystems {
 			}
 		}
 
+		internal static bool IsEIntrSyscallReturn(int ereturn)
+			=> ereturn < 0 && Marshal.GetLastWin32Error() == IOErrors.Interrupted;
+
+		internal static bool IsEIntrSyscallReturnOrException(int ereturn, string path, bool canpass, int keep, bool writing, out IOException exception)
+		{
+			if (ereturn >= 0) { exception = null; return false; }
+			int errno = Marshal.GetLastWin32Error();
+			if (errno == IOErrors.Interrupted) { exception = null; return true; }
+			if (canpass && IsPassError(errno, keep, writing)) { exception = null; return false; }
+			var ci = new System.ComponentModel.Win32Exception();
+			exception = GetExceptionFromErrno(errno, path, ci.Message);
+			return false;
+		}
+
+		internal static bool IsEIntrSyscallReturnOrException(long ereturn, string path, bool canpass, int keep, bool writing, out IOException exception)
+		{
+			if (ereturn >= 0) { exception = null; return false; }
+			return IsEIntrSyscallReturnOrException(-1, path, canpass, keep, writing, out exception);
+		}
+
 #endif
 
 		internal static bool IsPassError(int errno, int keep, bool writing)

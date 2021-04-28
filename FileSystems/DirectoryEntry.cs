@@ -146,26 +146,34 @@ namespace Emet.FileSystems {
 			var arg = NameToByteArray(Path);
 #if OS_LINUXX64
 			var statbuf = new NativeMethods.statbuf64();
-			if (symbolic == FileSystem.FollowSymbolicLinks.Always)
-				cresult = NativeMethods.__xstat64(NativeMethods.statbuf_version, arg, out statbuf);
-			else
-				cresult = NativeMethods.__lxstat64(NativeMethods.statbuf_version, arg, out statbuf);
+			do {
+				if (symbolic == FileSystem.FollowSymbolicLinks.Always)
+					cresult = NativeMethods.__xstat64(NativeMethods.statbuf_version, arg, out statbuf);
+				else
+					cresult = NativeMethods.__lxstat64(NativeMethods.statbuf_version, arg, out statbuf);
+			} while (IsEIntrSyscallReturn(cresult));
 #else
 			var statbuf = new NativeMethods.statbuf();
-			if (symbolic == FileSystem.FollowSymbolicLinks.Always)
-				cresult = NativeMethods.stat(arg, out statbuf);
-			else
-				cresult = NativeMethods.lstat(arg, out statbuf);
+			do {
+				if (symbolic == FileSystem.FollowSymbolicLinks.Always)
+					cresult = NativeMethods.stat(arg, out statbuf);
+				else
+					cresult = NativeMethods.lstat(arg, out statbuf);
+			} while (IsEIntrSyscallReturn(cresult));
 #endif
 			bool followerror = false;
 			if (symbolic == FileSystem.FollowSymbolicLinks.IfNotDirectory && cresult == 0 &&
 					((statbuf.st_mode & FileTypeMask) == (int)FileType.SymbolicLink)) {
 #if OS_LINUXX64
 				var statbuf2 = new NativeMethods.statbuf64();
-				cresult = NativeMethods.__xstat64(NativeMethods.statbuf_version, arg, out statbuf2);
+				do {
+					cresult = NativeMethods.__xstat64(NativeMethods.statbuf_version, arg, out statbuf2);
+				} while (IsEIntrSyscallReturn(cresult));
 #else
 				var statbuf2 = new NativeMethods.statbuf();
-				cresult = NativeMethods.stat(arg, out statbuf2);
+				do {
+					cresult = NativeMethods.stat(arg, out statbuf2);
+				} while (IsEIntrSyscallReturn(cresult));
 #endif
 				if (cresult == 0) {
 					if (symbolic == FileSystem.FollowSymbolicLinks.Always ||

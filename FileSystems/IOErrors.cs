@@ -14,6 +14,7 @@ namespace Emet.FileSystems {
 		public static readonly int PermissionDenied = 1;
 		public static readonly int FileNotFound = 2;
 		public static readonly int PathNotFound = 0xFFFE;
+		public static readonly int Interrupted = 4;
 		public static readonly int IoError = 5;
 		public static readonly int IoChecksumError = 0xFFFE;
 		public static readonly int IoWriteFault = 0xFFFE;
@@ -120,6 +121,7 @@ namespace Emet.FileSystems {
 		public static readonly int PermissionDenied = unchecked((int)0x80070005);
 		public static readonly int FileNotFound = unchecked((int)0x80070002);
 		public static readonly int PathNotFound = unchecked((int)0x80070003);
+		public static readonly int Interrupted = 4;
 		public static readonly int IoError = unchecked((int)0x8007001F);
 		public static readonly int IoChecksumError = unchecked((int)0x80070017);
 		public static readonly int IoWriteFault = unchecked((int)0x8007001D);
@@ -197,8 +199,11 @@ namespace Emet.FileSystems {
 		public static readonly int PermissionDenied = 1;
 		///<summary>The file was not found; also check PathNotFound if you check this</summary>
 		public static readonly int FileNotFound = 2;
-		///<summary>The path was not found; also check FIleNotFound if you check this</summary>
+		///<summary>The path was not found; also check FileNotFound if you check this</summary>
 		public static readonly int PathNotFound = unchecked((int)0x80070003);
+		///<summary>On Unix systems, the system call was interrupted. Try again.</summary>
+		///<remarks>This error code is public for the convenience of your own P/Invocations. Emet should not raise it.</remarks>
+		public static readonly int Interrupted = 4;
 		///<summary>Device-level IO error; returned if we didn't get a specific IO error</summary>
 		public static readonly int IoError = 5;
 		///<summary>Disk block CRC was incorrect</summary>
