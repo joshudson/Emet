@@ -110,7 +110,7 @@ namespace Emet.MultiCall {
 					char c;
 					char *cmd = GetCommandLineW();
 					bool quoted = false;
-					while ((c = *cmd) != 0 && (quoted || c != ' ' && c != '\t'))
+					while ((c = *cmd++) != 0 && (quoted || c != ' ' && c != '\t'))
 						if (c == '"') 
 							quoted = !quoted;
 						else
