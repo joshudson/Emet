@@ -4,7 +4,6 @@ namespace Emet.MultiCall {
 	public static class Test {
 		public static void Main(string[] args) {
 			Console.WriteLine("My name is " + Entry.Argv0);
-			Console.WriteLine("My name is " + Entry.argv0);
 			Entry.Dispatch(args,
 				("entry1", "Entry Point 1", EntryPoint1),
 				("entry2", "Entry Point 2", EntryPoint2),
