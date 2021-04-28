@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net5.0</TargetFrameworks>
+    <OutputType>exe</OutputType>
+    <DebugType>None</DebugType>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <LangVersion>9.0</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Authors>Joshua Hudson &lt;joshudson@gmail.com&gt;</Authors>
+    <NoWarn>1591</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <DefineConstants Condition="'$(RuntimeIdentifier)'=='win-x86' Or '$(RuntimeIdentifier)'=='win-x64'">$(DefineConstants);OS_WIN</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeIdentifier)'=='linux-x64'">$(DefineConstants);OS_LINUXX64;OSTYPE_UNIX</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeIdentifier)'=='osx-x64'">$(DefineConstants);OS_MACOSX64;OSTYPE_UNIX</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../MultiCall/MultiCall.cs" />
+  </ItemGroup>
+</Project>

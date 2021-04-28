@@ -1,0 +1,11 @@
+<Project Sdk="MSBuild.Sdk.Extras">
+
+  <PropertyGroup>
+    <TargetFramework>net5.0</TargetFramework>
+    <!-- <BaseIntermediateOutputPath>obj/ref/</BaseIntermediateOutputPath> -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>0414,8597</NoWarn>
+    <DebugType>None</DebugType>
+    <VersionPrefix>1.0.0</VersionPrefix>
+  </PropertyGroup>
+</Project>
