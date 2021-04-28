@@ -118,7 +118,7 @@ namespace Emet.MultiCall {
 				}
 				if (sb.Length > 4
 						&& (sb[sb.Length - 1] == 'e' || sb[sb.Length - 1] == 'E')
-						&& (sb[sb.Length - 3] == 'x' || sb[sb.Length - 3] == 'X')
+						&& (sb[sb.Length - 2] == 'x' || sb[sb.Length - 2] == 'X')
 						&& (sb[sb.Length - 3] == 'e' || sb[sb.Length - 3] == 'E'))
 					sb.Length -= 4;
 				argv0 = sb.ToString();
