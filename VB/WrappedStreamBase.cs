@@ -18,48 +18,91 @@ namespace Emet.VB {
 	public abstract class WrappedStreamBase : Stream
 	{
 		protected Stream BackingStream { 
-	    [MethodImpl(MethodImplOptions.AggressiveInlining)] get;
-  	  [MethodImpl(MethodImplOptions.AggressiveInlining)] set;
+			[MethodImpl(MethodImplOptions.AggressiveInlining)] get;
+			[MethodImpl(MethodImplOptions.AggressiveInlining)] set;
 		}
 
 #if NET45 || NET10
 		// Turns out these don't even allocate memory.
+		///<summary>Convenient access to a truthy task</summary>
 		protected static Task<bool> TrueResult { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; } = Task.FromResult(true);
+		///<summary>Convenient access to a falsy task</summary>
 		protected static Task<bool> FalseResult { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; } = Task.FromResult(false);
 #endif
 
+		///<summary>When called from a derived class, constructs the wrapped stream base, initally backed by this stream</summary>
 		protected WrappedStreamBase(Stream backingStream) => this.BackingStream = backingStream;
 
+		///<summary>When overridden in a derived class, adjusts the amout of data to read</summary>
+		///<param name="size">the number of bytes to read</param>
 		protected abstract void AdjustBeforeRead(ref int size);
+		///<summary>When overridden in a dreived class, adjusts the amout of data to write</summary>
+		///<param name="size">the number of bytes to write</param>
+		///<remarks>part-writes are impossible but making the write smaller will chunk the write</remarks>
 		protected abstract void AdjustBeforeWrite(ref int size);
+		///<summary>When overridden in a derived class, adjusts the internal state of the derived class after read</summary>
+		///<param name="size">the number of bytes that were read</param>
+		///<param name="rqsize">the number of bytes that were requested to be read</param>
+		///<returns>whether or not to continue the read if there is more room</returns>
 		protected virtual bool AdjustAfterRead(int size, int rqsize) { return false; }
+		///<summary>When overridden in a derived class, adjusts the internal state of the derived class after write</summary>
+		///<param name="size">the number of bytes that were read</param>
+		///<remarks>Part writes are impossible so the loop can't be bailed out of</remarks>
 		protected virtual void AdjustAfterWrite(int size) {}
+		///<summary>When overridden in a derived class, adjusts the internal state of the derived class after a failed read</summary>
 		protected virtual void AdjustAfterReadFailed(IOException ex) {}
+		///<summary>When overridden in a derived class, adjusts the internal state of the derived class after a failed write</summary>
 		protected virtual void AdjustAfterWriteFailed(IOException ex) {}
 
 #if NET45 || NET10
 
+		///<summary>Adjusts the amout of data to read asynchronously</summary>
+		///<param name="size">the number of bytes to read</param>
+		///<param name="cancellationToken">the token to cancel async IO</param>
+		///<returns>the number of bytes to read</returns>
+		///<remarks>the default implementation calls AdjustBeforeRead</remarks>
 		protected virtual Task<int> AdjustBeforeReadAsync(int size, CancellationToken cancellationToken) { AdjustBeforeRead(ref size); return Task.FromResult(size); }
+		///<summary>Adjusts the amout of data to write asynchronously</summary>
+		///<param name="size">the number of bytes to write</param>
+		///<param name="cancellationToken">the token to cancel async IO</param>
+		///<returns>the number of bytes to write</returns>
+		///<remarks>the default implementation calls AdjustBeforeWrite</remarks>
 		protected virtual Task<int> AdjustBeforeWriteAsync(int size, CancellationToken cancellationToken) { AdjustBeforeWrite(ref size); return Task.FromResult(size); }
-		protected virtual Task<bool> AdjustAfterReadAsync(int size, int rqsize, CancellationToken cancellationToken) { AdjustAfterRead(size, rqsize); return FalseResult; }
+		///<summary>Adjusts the internal state after read</summary>
+		///<param name="size">the number of bytes read</param>
+		///<param name="rqsize">the number of bytes requested</param>
+		///<param name="cancellationToken">the token to cancel async IO</param>
+		///<remarks>the default implementation calls AdjustAfterRead</remarks>
+		protected virtual Task<bool> AdjustAfterReadAsync(int size, int rqsize, CancellationToken cancellationToken) { return AdjustAfterRead(size, rqsize) ? TrueResult : FalseResult; }
 #if NET45
 #pragma warning disable 1998
+		///<summary>Adjusts the internal state after write</summary>
+		///<param name="size">the number of bytes written</param>
+		///<param name="cancellationToken">the token to cancel async IO</param>
+		///<remarks>the default implementation calls AdjustAfterWrite</remarks>
 		protected virtual async Task AdjustAfterWriteAsync(int size, CancellationToken cancellationToken) { AdjustAfterWrite(size); }
 #pragma warning restore 1998
 #else
+		///<summary>Adjusts the internal state after write</summary>
+		///<param name="size">the number of bytes written</param>
+		///<param name="cancellationToken">the token to cancel async IO</param>
+		///<remarks>the default implementation calls AdjustAfterWrite</remarks>
 		protected virtual Task AdjustAfterWriteAsync(int size, CancellationToken cancellationToken) { AdjustAfterWrite(size); return Task.CompletedTask; }
 #endif
 #endif
 
+		///<summary>When overridden in a derived class, adjusts the internal state of the derived class after a canceled read</summary>
 		protected virtual void AdjustAfterReadCanceled(OperationCanceledException ex) {}
+		///<summary>When overridden in a derived class, adjusts the internal state of the derived class after a canceled write</summary>
 		protected virtual void AdjustAfterWriteCanceled(OperationCanceledException ex) {}
 
 		public override int Read(byte[] buffer, int offset, int size)
 		{
 			int accum = 0;
-			int sofar;
+			int sofar = 0;
 			try {
 				do {
+					size -= sofar;
 					if (size == 0) return accum;
 					AdjustBeforeRead(ref size);
 					if (size == 0) return accum;
@@ -103,9 +146,10 @@ namespace Emet.VB {
 		public async override Task<int> ReadAsync(byte[] buffer, int offset, int size, CancellationToken cancellationToken = default)
 		{
 			int accum = 0;
-			int sofar;
+			int sofar = 0;
 			try {
 				do {
+					size -= sofar;
 					if (size == 0) return accum;
 					size = await AdjustBeforeReadAsync(size, cancellationToken);
 					if (size == 0) return accum;
@@ -183,6 +227,7 @@ namespace Emet.VB {
 					AdjustAfterWrite(size2);
 					if (size == size2) break;
 					buffer = buffer.Slice(size2, size - size2);
+					size = buffer.Length;
 				}
 			} catch (IOException ex) {
 				AdjustAfterWriteFailed(ex);
@@ -199,8 +244,7 @@ namespace Emet.VB {
 		{
 			try {
 				while (size > 0) {
-					int size2 = size;
-					size2 = await AdjustBeforeWriteAsync(size2, cancellationToken);
+					int size2 = await AdjustBeforeWriteAsync(size, cancellationToken);
 					if (size2 == 0) throw new InvalidOperationException("AdjustBeforeWriteAsync() Didn't make any progress.");
 					await BackingStream.WriteAsync(buffer, offset, size2, cancellationToken);
 					await AdjustAfterWriteAsync(size2, cancellationToken);
@@ -229,6 +273,7 @@ namespace Emet.VB {
 					await BackingStream.WriteAsync(buffer.Slice(0, size2), cancellationToken);
 					await AdjustAfterWriteAsync(size2, cancellationToken);
 					buffer = buffer.Slice(size2);
+					size = buffer.Length;
 				}
 			} catch (IOException ex) {
 				AdjustAfterWriteFailed(ex);
@@ -247,6 +292,10 @@ namespace Emet.VB {
 #endif
 
 		protected override void Dispose(bool disposing) { if (disposing) BackingStream?.Dispose(); }
+
+#if NET30
+		public override ValueTask DisposeAsync() { return BackingStream?.DisposeAsync() ?? default; }
+#endif
 
 		// These just don't do anything useful. Provider can do something interesting if desired.
 
