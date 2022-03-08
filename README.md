@@ -50,7 +50,9 @@ browse the public API and XML comments.
 Individual IO errors may be caught and handled independently by writing code that
 looks like this:
 
-    `catch (System.IOException ioex) when (ioex.HResult == Emet.FileSystems.IOErrors.NotADirectory)`
+````csharp
+    catch (System.IOException ioex) when (ioex.HResult == Emet.FileSystems.IOErrors.NotADirectory)
+````
 
 You would most likely use `using` directives to import namespaces, but the example is
 easier to understand this way.
