@@ -100,6 +100,19 @@ namespace Emet.VB {
 		{
 			int accum = 0;
 			int sofar = 0;
+			if (size == 0) {
+				accum = 1;
+				AdjustBeforeRead(ref accum);
+				if (accum == 0) return 0;
+				try {
+					accum = BackingStream.Read(buffer, offset, 0);
+					AdjustAfterRead(0, 0);
+				} catch (IOException ex) {
+					AdjustAfterReadFailed(ex);
+					throw;
+				}
+				return 0;
+			}
 			try {
 				do {
 					size -= sofar;
@@ -121,6 +134,19 @@ namespace Emet.VB {
 		public override int Read(Span<byte> buffer)
 		{
 			int accum = 0;
+			if (buffer.Length == 0) {
+				accum = 1;
+				AdjustBeforeRead(ref accum);
+				if (accum == 0) return 0;
+				try {
+					accum = BackingStream.Read(buffer.Slice(0, 0));
+					AdjustAfterRead(0, 0);
+				} catch (IOException ex) {
+					AdjustAfterReadFailed(ex);
+					throw;
+				}
+				return 0;
+			}
 			int sofar;
 			int size;
 			try {
@@ -147,6 +173,21 @@ namespace Emet.VB {
 		{
 			int accum = 0;
 			int sofar = 0;
+			if (size == 0) {
+				accum = await AdjustBeforeReadAsync(1, cancellationToken);
+				if (accum == 0) return 0;
+				try {
+					accum = await BackingStream.ReadAsync(buffer, offset, 0, cancellationToken);
+					await AdjustAfterReadAsync(0, 0, cancellationToken);
+				} catch (IOException ex) {
+					AdjustAfterReadFailed(ex);
+					throw;
+				} catch (OperationCanceledException ex) {
+					AdjustAfterReadCanceled(ex);
+					throw;
+				}
+				return 0;
+			}
 			try {
 				do {
 					size -= sofar;
@@ -174,6 +215,21 @@ namespace Emet.VB {
 			int accum = 0;
 			int size;
 			int sofar;
+			if (buffer.Length == 0) {
+				accum = await AdjustBeforeReadAsync(1, cancellationToken);
+				if (accum == 0) return 0;
+				try {
+					accum = await BackingStream.ReadAsync(buffer.Slice(0, 0), cancellationToken);
+					await AdjustAfterReadAsync(0, 0, cancellationToken);
+				} catch (IOException ex) {
+					AdjustAfterReadFailed(ex);
+					throw;
+				} catch (OperationCanceledException ex) {
+					AdjustAfterReadCanceled(ex);
+					throw;
+				}
+				return 0;
+			}
 			try {
 				do {
 					size = buffer.Length;

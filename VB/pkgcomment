@@ -1,1 +1,1 @@
-This nuget package is only useful when coding in .VB. The .dll is only 16kb; the package is only as large as it is because I need five different builds of it for different targets. It's legacy stuff man. Don't be surprised if there's more legacy stuff going on within it.
+This nuget package is only useful when coding in .VB. The .dll is only 25kb; the package is only as large as it is because I need five different builds of it for different targets. It's legacy stuff man. Don't be surprised if there's more legacy stuff going on within it.

@@ -85,6 +85,18 @@ namespace Emet.VB.Extensions {
 			for (int i = 0; i < l; i++)
 				span[i] = source[i + offset];
 		}
+
+		///<summary>Gets the pointer from a MemoryHandle as an IntPtr</summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)] public static unsafe IntPtr GetPointer(this System.Buffers.MemoryHandle source)
+			=> (IntPtr)source.Pointer;
+
+#if NET30
+		public static unsafe int Read(this System.IO.Stream stream, IntPtr buffer, int count)
+			=> stream.Read(new Span<byte>((byte *)buffer, count));
+
+		public static unsafe void Write(this System.IO.Stream stream, IntPtr buffer, int count)
+			=> stream.Write(new ReadOnlySpan<byte>((byte *)buffer, count));
+#endif
 	}
 }
 
