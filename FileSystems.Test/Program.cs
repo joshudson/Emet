@@ -9,6 +9,13 @@ static class Program {
 	static void Main(string[] args)
 	{
 		string testpath = ".scratch";
+		string fatpath = null;
+		if (args.Length > 0) {
+			testpath = Path.Combine(args[0], testpath);
+			if (args.Length > 1)
+				fatpath = Path.Combine(args[1], "test.fat");
+		} else
+			Console.WriteLine("Running with default test location; to test on normal and FAT filesystems, give two arguments to Emet.FileSystems.Test.");
 		try {
 			try {
 				Directory.Delete(testpath, true);
@@ -200,6 +207,35 @@ static class Program {
 			try {
 				Directory.Delete(testpath, true);
 			} catch (DirectoryNotFoundException) {}
+		}
+		if (fatpath is not null) {
+			try {
+				try {
+					Directory.Delete(fatpath, true);
+				} catch (DirectoryNotFoundException) {}
+				Directory.CreateDirectory(fatpath);
+				RunSomeTest("Testing FAT error code on CreateHardLink", () => {
+					CreateFile(Path.Combine(fatpath, "file1"));
+					try {
+						FileSystem.CreateHardLink(Path.Combine(fatpath, "file1"), Path.Combine(fatpath, "link1"));
+					} catch (IOException ex) when (ex.HResult == IOErrors.NoSuchSystemCall) {}
+				});
+				RunSomeTest("Testing FAT error code on CreateSymbolicLink", () => {
+					try {
+						FileSystem.CreateSymbolicLink(Path.Combine(fatpath, "link2a"), Path.Combine(fatpath, "link2b"));
+					} catch (IOException ex) when (ex.HResult == IOErrors.NoSuchSystemCall) {}
+				});
+			}
+			catch (Exception ex) {
+				Environment.ExitCode = 1;
+				Console.WriteLine("Failed");
+				Console.WriteLine(ex.ToString());
+			}
+			finally {
+				try {
+					Directory.Delete(fatpath, true);
+				} catch (DirectoryNotFoundException) {}
+			}
 		}
 	}
 

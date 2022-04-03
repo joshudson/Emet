@@ -6,6 +6,8 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>0414</NoWarn>
     <DebugType>None</DebugType>
-    <VersionPrefix>0.0.3</VersionPrefix>
+    <Version>0.0.5</Version>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>annotations</Nullable>
   </PropertyGroup>
 </Project>

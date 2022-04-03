@@ -353,7 +353,7 @@ namespace Emet.FileSystems {
 #elif OS_WIN
 		public DateTime CreationTimeUTC { get { if (!loaded) _Refresh(); return birthTime; } }
 #else
-		///<summary>Returns the secure last change time, if available</summary>
+		///<summary>Returns the file creation time, if available</summary>
 		///<remarks>If the filesystem doesn't support it, returns whatever fake result the filesystem driver provided;
 		///however if the OS doesn't support it it returns ctime</remarks>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>

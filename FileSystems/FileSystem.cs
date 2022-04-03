@@ -143,6 +143,33 @@ namespace Emet.FileSystems {
 #endif
 		}
 
+		///<summary>Gets the contents of a directory or throw DirectoryNotFoundException if not found</summary>
+		///<param name="path">path to enumerate</param>
+		///<param name="followSymbolicLinks">Whether or not to follow symbolic links</param>
+		///<exception cref="System.IO.IOException">An IO error occurred accessing path</exception>
+		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes</remarks>
+		public static IEnumerable<DirectoryEntry> GetDirectoryContentsOrThrow(string path,
+				FollowSymbolicLinks followSymbolicLinks = FollowSymbolicLinks.Never)
+			=> GetDirectoryContents(path, NonExtantDirectoryBehavior.Throw, followSymbolicLinks);
+
+		///<summary>Gets the contents of a directory or an empty enumerable for not found</summary>
+		///<param name="path">path to enumerate</param>
+		///<param name="followSymbolicLinks">Whether or not to follow symbolic links</param>
+		///<exception cref="System.IO.IOException">An IO error occurred accessing path</exception>
+		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes</remarks>
+		public static IEnumerable<DirectoryEntry> GetDirectoryContentsOrEmpty(string path,
+				FollowSymbolicLinks followSymbolicLinks = FollowSymbolicLinks.Never)
+			=> GetDirectoryContents(path, NonExtantDirectoryBehavior.ReturnEmpty, followSymbolicLinks);
+
+		///<summary>Gets the contents of a directory or null for directory not found</summary>
+		///<param name="path">path to enumerate</param>
+		///<param name="followSymbolicLinks">Whether or not to follow symbolic links</param>
+		///<exception cref="System.IO.IOException">An IO error occurred accessing path</exception>
+		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes</remarks>
+		public static IEnumerable<DirectoryEntry>? GetDirectoryContentsOrNull(string path,
+				FollowSymbolicLinks followSymbolicLinks = FollowSymbolicLinks.Never)
+			=> GetDirectoryContents(path, NonExtantDirectoryBehavior.ReturnNull, followSymbolicLinks);
+
 		///<summary>Creates a hard link (new name) for a file</summary>
 		///<param name="targetpath">The path to the existing file</param>
 		///<param name="linkpath">The path to create the new link at</param>
@@ -156,9 +183,48 @@ namespace Emet.FileSystems {
 			while (IsEIntrSyscallReturnOrException(
 				NativeMethods.link(btargetpath, blinkpath),
 				linkpath, false, 0, true, out ex));
-			if (ex is not null) throw ex;
+			if (ex is not null)
+			{
+				if (ex.HResult == IOErrors.NoSuchSystemCall || ex.HResult == IOErrors.SocketOperationNotSupported)
+					ex = GetExceptionFromErrno(IOErrors.NoSuchSystemCall, targetpath, "File system does not support hard links.");
+#if OS_LINUXX64
+				else if (ex.HResult == IOErrors.PermissionDenied) {
+					int n = blinkpath.Length;
+					while (n-- > 0 && blinkpath[n] != '/')
+						;
+					// pathconf is busted for this call. glibc is refusing me permission to file bug
+					if (n == -1) { blinkpath[0] = (byte)'.'; n = 1; }
+					blinkpath[n] = 0;
+					int fsresult;
+					NativeMethods.statfsbuf64 statfs;
+					do {
+						fsresult = NativeMethods.statfs64(blinkpath, out statfs);
+					} while (IsEIntrSyscallReturn(fsresult));
+					if (fsresult >= 0 && statfs.f_type == NativeMethods.MSDOS_SUPER_MAGIC)
+						ex = GetExceptionFromErrno(IOErrors.NoSuchSystemCall, targetpath, "File system does not support hard links.");
+				}
+#else
+				else if (blinkpath.Length > 1) {
+					// Call pathconf, hope it works
+					int n = blinkpath.Length;
+					while (n-- > 0 && blinkpath[n] != '/')
+						;
+					if (n == -1) { blinkpath[0] = (byte)'.'; n = 1; }
+					blinkpath[n] = 0;
+					long presult;
+					do {
+						presult = NativeMethods.pathconf(blinkpath, NativeMethods._PC_LINK_MAX);
+					} while (presult == -1 && IsEIntrSyscallReturn(-1));
+					if (presult == 1) {
+						ex = GetExceptionFromErrno(IOErrors.NoSuchSystemCall, targetpath, "File system does not support hard links.");
+					}
+				}
+#endif
+				throw ex;
+			}
 #elif OS_WIN
 			if (0 == NativeMethods.CreateHardLinkW(linkpath, targetpath, IntPtr.Zero)) {
+				if (Marshal.GetLastWin32Error() == 1) throw GetExceptionFromErrno(1, targetpath, "File system does not support hard links.");
 				throw GetExceptionFromLastError(linkpath, false, 0, true);
 			}
 #else
@@ -182,7 +248,30 @@ namespace Emet.FileSystems {
 			while (IsEIntrSyscallReturnOrException(
 				NativeMethods.symlink(btargetpath, blinkpath),
 				linkpath, false, 0, true, out ex));
-			if (ex is not null) throw ex;
+			if (ex is not null) {
+				if (ex.HResult == IOErrors.NoSuchSystemCall || ex.HResult == IOErrors.SocketOperationNotSupported)
+					ex = GetExceptionFromErrno(IOErrors.NoSuchSystemCall, targetpath, "File system does not support symbolic links.");
+#if OS_LINUXX64
+				else if (ex.HResult == IOErrors.PermissionDenied)
+#else
+				else if (blinkpath.Length > 1)
+#endif
+				{
+					int n = blinkpath.Length;
+					while (n-- > 0 && blinkpath[n] != '/')
+						;
+					if (n == -1) { blinkpath[0] = (byte)'.'; n = 1; }
+					blinkpath[n] = 0;
+					long presult;
+					do {
+						presult = NativeMethods.pathconf(blinkpath, NativeMethods._PC_2_SYMLINKS);
+					} while (presult == -1 && IsEIntrSyscallReturn(-1));
+					if (presult == 0) {
+						ex = GetExceptionFromErrno(IOErrors.NoSuchSystemCall, targetpath, "File system does not support symbolic links.");
+					}
+				}
+				throw ex;
+			}
 #elif OS_WIN
 			uint flags = 0;
 			if (targethint != FileType.File && targethint != FileType.Directory) {
@@ -203,6 +292,7 @@ namespace Emet.FileSystems {
 				flags = NativeMethods.SYMBOLIC_LINK_FLAG_DIRECTORY;
 			if (0 == NativeMethods.CreateSymbolicLinkW(linkpath, targetpath, flags)) {
 				var errno = (int)Marshal.GetLastWin32Error();
+				if (errno == 1) throw GetExceptionFromErrno(errno, linkpath, "File system does not support symbolic links.");
 				if (errno == 1314) {
 					flags |= NativeMethods.SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
 					if (0 != NativeMethods.CreateSymbolicLinkW(linkpath, targetpath, flags))
@@ -730,16 +820,18 @@ namespace Emet.FileSystems {
 		// List of DirectoryEntiry; this class actually exists so that callers don't take a dependency on downcasting
 		// IEnumerable<DirectoryEntry> to List<DirectoryEntry>.  I've switched back and forth between yield return and
 		// list more than once.
-		private class DirectoryEntryList : IEnumerable<DirectoryEntry> {
+		private class DirectoryEntryList : IEnumerable<DirectoryEntry>, IEnumerator<DirectoryEntry> {
 			private int clist;
 			private int alist;
 			private DirectoryEntry[] list;
+			private int offset;
 
 			internal DirectoryEntryList()
 			{
 				//clist = 0;
 				alist = 16;
 				list = new DirectoryEntry[16];
+				offset = -2;
 			}
 
 			internal void Add(DirectoryEntry e)
@@ -755,7 +847,23 @@ namespace Emet.FileSystems {
 				list[clist++] = e;
 			}
 
-			public IEnumerator<DirectoryEntry> GetEnumerator() => new Enumerator(this);
+			public IEnumerator<DirectoryEntry> GetEnumerator()
+				=> System.Threading.Interlocked.CompareExchange(ref offset, -1, -2) == -2 ? this : new Enumerator(this);
+
+			bool System.Collections.IEnumerator.MoveNext()
+			{
+				if (offset + 1 >= clist) return false;
+				++offset;
+				return true;
+			}
+
+			DirectoryEntry IEnumerator<DirectoryEntry>.Current => list[offset];
+
+			object System.Collections.IEnumerator.Current => list[offset];
+
+			void System.Collections.IEnumerator.Reset() => offset = -1;
+
+			void IDisposable.Dispose() { offset = -2; }
 
 			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 
@@ -773,18 +881,18 @@ namespace Emet.FileSystems {
 					offset = -1;
 				}
 
-				public bool MoveNext()
+				bool System.Collections.IEnumerator.MoveNext()
 				{
 					if (offset + 1 >= clist) return false;
 					++offset;
 					return true;
 				}
 
-				public DirectoryEntry Current => list[offset];
+				DirectoryEntry IEnumerator<DirectoryEntry>.Current => list[offset];
 
-				object System.Collections.IEnumerator.Current => Current;
+				object System.Collections.IEnumerator.Current => list[offset];
 
-				public void Reset() => offset = -1;
+				void System.Collections.IEnumerator.Reset() => offset = -1;
 
 				void IDisposable.Dispose() {}
 			}

@@ -5,11 +5,12 @@
     <RuntimeIdentifiers>linux-x64;win;osx-x64</RuntimeIdentifiers>
     <ExtrasBuildEachRuntimeIdentifier>true</ExtrasBuildEachRuntimeIdentifier>
     <DebugType>None</DebugType>
-    <VersionPrefix>0.0.4</VersionPrefix>
+    <Version>0.0.5</Version>
     <LangVersion>9.0</LangVersion>
+    <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Authors>Joshua Hudson &lt;joshudson@gmail.com&gt;</Authors>
-    <Copyright>2018-2021</Copyright>
+    <Copyright>2018-2022</Copyright>
     <Description>Replacement File Information APIs for .NET Core supporting symbolic links</Description>
     <PackageProjectUrl>https://github.com/joshudson/Emet</PackageProjectUrl>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>

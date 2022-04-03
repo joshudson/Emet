@@ -45,7 +45,29 @@ namespace Emet.FileSystems {
 			internal ulong st_glibc_reserved2;
 		};
 
+		[StructLayout(LayoutKind.Sequential)]
+		internal struct statfsbuf64 {
+			internal int f_type;
+			internal int f_bsize;
+			internal ulong f_blocks;
+			internal ulong f_bfree;
+			internal ulong f_bavail;
+			internal ulong f_files;
+			internal ulong f_ffree;
+			internal ulong f_fsid;
+			internal uint f_namelen;
+			internal uint f_spare0;
+			internal uint f_spare1;
+			internal uint f_spare2;
+			internal uint f_spare3;
+			internal uint f_spare4;
+			internal uint f_spare5;
+		};
+
 		internal const int statbuf_version = 1;
+		internal const int _PC_LINK_MAX = 0;
+		internal const int _PC_2_SYMLINKS = 20;
+		internal const int MSDOS_SUPER_MAGIC = 0x4d44;
 
 		[DllImport("libc.so.6", SetLastError=true)]
 		internal static extern IntPtr opendir([MarshalAs(UnmanagedType.LPArray)] byte[] path);
@@ -76,6 +98,12 @@ namespace Emet.FileSystems {
 
 		[DllImport("libc.so.6", SetLastError=true)]
 		internal static extern int __fxstat64(int version, IntPtr file, out statbuf64 buf);
+
+		[DllImport("libc.so.6", SetLastError=true)]
+		internal static extern int statfs64([MarshalAs(UnmanagedType.LPArray)] byte[] directory, out statfsbuf64 buf);
+
+		[DllImport("libc.so.6", SetLastError=true)]
+		internal static extern long pathconf([MarshalAs(UnmanagedType.LPArray)] byte[] path, int name);
 
 		[DllImport("libc.so.6", SetLastError=true)]
 		internal static extern int rename([MarshalAs(UnmanagedType.LPArray)] byte[] from, [MarshalAs(UnmanagedType.LPArray)] byte[] to);
@@ -136,6 +164,8 @@ namespace Emet.FileSystems {
 		}
 
 		internal const byte dirent_d_name_offset = 21;
+		internal const int _PC_LINK_MAX = 1;
+		internal const int _PC_2_SYMLINKS = 15;
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
 		internal static extern IntPtr opendir([MarshalAs(UnmanagedType.LPArray)] byte[] path);
@@ -166,6 +196,9 @@ namespace Emet.FileSystems {
 
 		[DllImport("libSystem.dylib", SetLastError=true, EntryPoint="fstat$INODE64")]
 		internal static extern int fstat(IntPtr file, out statbuf buf);
+
+		[DllImport("libSystem.dylib", SetLastError=true)]
+		internal static extern long pathconf([MarshalAs(UnmanagedType.LPArray)] byte[] path, int name);
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
 		internal static extern int rename([MarshalAs(UnmanagedType.LPArray)] byte[] from, [MarshalAs(UnmanagedType.LPArray)] byte[] to);

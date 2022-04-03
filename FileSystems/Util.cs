@@ -196,7 +196,7 @@ namespace Emet.FileSystems {
 		internal static IOException GetExceptionFromLastError(string path, bool canpass, int keep, bool writing)
 		{
 			int errno = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-			if (errno == 0) throw new IOException((path is null) ? "error code lost" : (path + ": error code lost"));
+			if (errno == 0) return new IOException((path is null) ? "error code lost" : (path + ": error code lost"));
 #if OS_WIN
 			errno |= unchecked((int)0x80070000);
 #endif
@@ -208,7 +208,7 @@ namespace Emet.FileSystems {
 		internal static IOException GetExceptionFromLastError(Func<string> path, bool canpass, int keep, bool writing)
 		{
 			int errno = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-			if (errno == 0) throw new IOException((path is null) ? "error code lost" : (path + ": error code lost"));
+			if (errno == 0) { string spath = path?.Invoke(); return new IOException((spath is null) ? "error code lost" : (spath + ": error code lost")); }
 #if OS_WIN
 			errno |= unchecked((int)0x80070000);
 #endif
@@ -217,7 +217,7 @@ namespace Emet.FileSystems {
 			return GetExceptionFromErrno(errno, path?.Invoke(), ci.Message);
 		}
 
-		private static IOException GetExceptionFromErrno(int errno, string path, string cimsg)
+		internal static IOException GetExceptionFromErrno(int errno, string path, string cimsg)
 		{
 			var msg = (path is null) ? cimsg : (path + ": " + cimsg);
 			if (errno == IOErrors.FileNotFound) {

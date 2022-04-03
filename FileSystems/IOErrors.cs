@@ -266,7 +266,7 @@ namespace Emet.FileSystems {
 		public static readonly int BadPathName = 36;
 		///<summary>Out of file locks</summary>
 		public static readonly int NoMoreLocks = 37;
-		///<summary>Oh noes! That system call doesn't exist.</summary>
+		///<summary>Oh noes! That system call doesn't exist. More likely, an attempt to create a hard or symbolic link was made on a filesystem that does not support it.</summary>
 		public static readonly int NoSuchSystemCall = 38;
 		///<summary>The directory isn't empty.</summary>
 		public static readonly int DirectoryNotEmpty = 39;
