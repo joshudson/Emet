@@ -1,8 +1,13 @@
-<Project Sdk="MSBuild.Sdk.Extras">
+<Project>
+  <PropertyGroup>
+    <IntermediateOutputPath>obj/ref/</IntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>obj/ref/</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+
+  <Import Sdk="MSBuild.Sdk.Extras" Project="Sdk.props" />
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <!-- <BaseIntermediateOutputPath>obj/ref/</BaseIntermediateOutputPath> -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>0414</NoWarn>
     <DebugType>None</DebugType>
@@ -10,4 +15,6 @@
     <LangVersion>9.0</LangVersion>
     <Nullable>annotations</Nullable>
   </PropertyGroup>
+
+  <Import Sdk="MSBuild.Sdk.Extras" Project="Sdk.targets" />
 </Project>
