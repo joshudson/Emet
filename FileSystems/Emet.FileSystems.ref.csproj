@@ -9,6 +9,8 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+    <Optimize>true</Optimize>
     <NoWarn>0414</NoWarn>
     <DebugType>None</DebugType>
     <Version>0.0.5</Version>
@@ -17,4 +19,8 @@
   </PropertyGroup>
 
   <Import Sdk="MSBuild.Sdk.Extras" Project="Sdk.targets" />
+
+  <Target Name="CustomAfterCompile" AfterTargets="Compile">
+    <Exec Command="../patchdosstub obj/ref/$(TargetFramework)/Emet.FileSystems.dll" />
+  </Target>
 </Project>
