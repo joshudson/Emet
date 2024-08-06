@@ -240,17 +240,24 @@ pechkaddr	equ 4096 + 16
 	mov	edx, [rsp + lensofar]		; Amount this block
 	lea	rsi, [rsp + rdx]		; Recover pointer to end of read
 .peloop	mov	ecx, edx
+	xor	eax, eax
 	test	edx, 1
 	jz	.even
-	mov	[rsi], byte 0
+	mov	[rsi], al
 	inc	ecx
 	inc	rsi
 .even	test	edx, 2
 	jz	.even2
-	mov	[rsi], word 0
+	mov	[rsi], ax
 	inc	ecx
 	inc	ecx
-.even2	shr	ecx, 2
+	inc	rsi
+	inc	rsi
+.even2	test	edx, 4
+	jz	.even4
+	mov	[rsi], eax
+	add	ecx, 4
+.even4	shr	ecx, 3
 	mov	rsi, rsp
 	cmp	r14d, [rsp + peblockno]		; Since the PE header must be aligned
 	jne	.npe				; we can check PE file and zero chksum
@@ -260,12 +267,12 @@ pechkaddr	equ 4096 + 16
 .npe	cmp	r14d, [rsp + pechkblockno]
 	jne	.pelp2
 	movzx	rbx, word [rsp + pechkblockoff]
-	mov	[rsi + rbx], dword 0
+	mov	[rsi + rbx], eax
 .npechk	clc
-.pelp2	lodsd
-	adc	r15d, eax
+.pelp2	lodsq
+	adc	r15, rax
 	loop	.pelp2
-	adc	r15d, 0
+	adc	r15, 0
 	cmp	edx, 4096
 	jb	.finish
 	mov	rsi, rsp
@@ -280,18 +287,23 @@ pechkaddr	equ 4096 + 16
 	add	[rsp + lensofar], edx
 	jmp	.peloop
 
-.finish	mov	ecx, [rsp + lensofar]
+.finish	mov	ecx, [rsp + lensofar]	; lensofar = file length by this point
+	mov	rbx, r15
+	shr	rbx, 32
+	add	r15d, ebx
+	pushf
 	mov	ebx, r15d
 	shr	ebx, 16
-	and	r15d, 0FFFFh
-	add	r15w, bx
+	popf
+	adc	r15w, bx
 	adc	r15w, 0
+	and	r15d, 0FFFFh
 	add	r15d, ecx
 	mov	esi, [rsp + pechkaddr]
-	mov	ecx, esi
-	add	ecx, 4				; Check if we would grow the file
-	cmp	[rsp + lensofar], esi		; lensofar = file length by this point
-	jb	peerror				; must not be a PE file
+	mov	edx, esi
+	add	edx, 4			; Check if we would grow the file
+	cmp	edx, esi
+	jb	peerror			; must not be a PE file
 	xor	edx, edx
 	xor	eax, eax
 	mov	al, 8
@@ -380,7 +392,7 @@ syscall_gate:
 	db	90h
 	db	0CCh
 _end:
-	align 8, db 0CCh
+	align 16, db 0CCh
 
 symtab:
 	dd	0
