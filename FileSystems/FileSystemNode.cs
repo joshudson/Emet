@@ -46,7 +46,7 @@ namespace Emet.FileSystems {
 
 		///<summary>When overridden in a derived class, provides the path for generating error messages</summary>
 		///<remarks>The base implementation just returns null</remarks>
-		protected virtual string ErrorPath => null;
+		protected virtual string? ErrorPath => null;
 
 #if OSTYPE_UNIX
 		internal const int FileTypeMask = 0b1_111_000_000_000_000;
@@ -87,7 +87,7 @@ namespace Emet.FileSystems {
 				var statbuf = new NativeMethods.statbuf64();
 				while (IsEIntrSyscallReturnOrException(
 					NativeMethods.__fxstat64(NativeMethods.statbuf_version, handle.DangerousGetHandle(), out statbuf),
-					ErrorPath, false, 0, false, out ex));
+					ErrorPath, ErrorPath, false, 0, false, out ex));
 				if (ex is not null) throw ex;
 				FillStatResult(ref statbuf);
 #elif OS_MACOSX64
@@ -95,7 +95,7 @@ namespace Emet.FileSystems {
 				var statbuf = new NativeMethods.statbuf();
 				while (IsEIntrSyscallReturnOrException(
 					NativeMethods.fstat(handle.DangerousGetHandle(), out statbuf),
-					ErrorPath, false, 0, false, out ex));
+					ErrorPath, ErrorPath, false, 0, false, out ex));
 				if (ex is not null) throw ex;
 				FillStatResult(ref statbuf);
 #elif OS_WIN
@@ -157,6 +157,10 @@ namespace Emet.FileSystems {
 			lastChangeTime = UnixTimeToDateTime(statbuf.st_ctime.tv_sec, statbuf.st_ctime.tv_nsec);
 #if OS_MACOSX64
 			birthTime = UnixTimeToDateTime(statbuf.st_birthtime.tv_sec, statbuf.st_ctime.tv_nsec);
+#elif OS_LINUXX64
+			birthTime = lastChangeTime;
+#else
+			SYNTAX ERROR
 #endif
 			loaded = true;
 		}
@@ -203,7 +207,7 @@ namespace Emet.FileSystems {
 			if (errno != 0) errno = NativeMethods.RtlNtStatusToDosError(errno);
 			if (errno != 0 && errno != (IOErrors.InsufficientBuffer & 0xFFFF) && errno != IOErrors.ERROR_MORE_DATA) {
 				NativeMethods.SetLastError(errno);
-				throw GetExceptionFromLastError(ErrorPath, false, 0, false);
+				throw GetExceptionFromLastError(ErrorPath, ErrorPath, false, 0, false);
 			}
 			errno = NativeMethods.NtQueryInformationFile(handle, out io, out all,
 					Marshal.SizeOf<NativeMethods.FILE_ALL_INFORMATION>(), NativeMethods.FileAllInformation);
@@ -242,7 +246,7 @@ namespace Emet.FileSystems {
 							buflen <<= 1;
 							continue; // Here's where we go around the loop
 						}
-						throw GetExceptionFromLastError(ErrorPath, false, 0, false);
+						throw GetExceptionFromLastError(ErrorPath, ErrorPath, false, 0, false);
 					}
 					GCHandle gch;
 					try {
@@ -278,6 +282,55 @@ namespace Emet.FileSystems {
 #if OS_WIN
 		private bool loaded2;
 #endif
+
+		///<summary>Sets failure error code on refresh on an IVirtualFileSystem (including file or path not found)</summary>
+		///<param name="errorCode">the value to return for ErrorCode</param>
+		protected void RefreshFailed(int errorCode) { this.errorCode = errorCode; Clear(); }
+
+		///<summary>Sets result of successful refrsh on an IVirtualFileSystem and the file exists</summary>
+		///<param name="fileType">the type of the file node</param>
+		///<param name="fileSize">the size of the file node</param>
+		///<param name="bytesUsed">the size of the file node on disk</param>
+		///<param name="deviceNumber">the proxy device number</param>
+		///<param name="inodeNumber">the remote inode number</param>
+		///<param name="links">the number of links to the file</param>
+		///<param name="creationTime">the date and time in UTC the file was created; pass lastChangeTime if unavailable</param>
+		///<param name="lastModificationTime">the date and time in UTC the file was last modified</param>
+		///<param name="lastChangeTime">the date and time in UTC the file node was last changed; pass lastModificationTime if unavailable</param>
+		///<param name="lastAccessTime">the date and time in UTC the file node was last accessed; pass lastModificationTime if unavailable</param>
+		protected void RefreshSucceeded(FileType fileType, long fileSize, long bytesUsed, long deviceNumber, long inodeNumber, long links,
+			DateTime creationTime, DateTime lastModificationTime, DateTime lastChangeTime, DateTime lastAccessTime)
+		{
+			this.errorCode = 0;
+			this.loaded = true;
+#if OS_WIN
+			this.loaded2 = true;
+#endif
+			this.fileType = fileType;
+			this.fileSize = fileSize;
+			this.bytesUsed = bytesUsed;
+			this.deviceNumber = deviceNumber;
+			this.inodeNumber = inodeNumber;
+			this.links = links;
+			this.birthTime = creationTime;
+			this.lastModificationTime = lastModificationTime;
+			this.lastChangeTime = lastChangeTime;
+			this.lastAccessTime = lastAccessTime;
+		}
+
+		///<summary>When implementing _Refresh within IVirtualFileSystem; checks if _Refresh should throw or call RefreshFailed()</summary>
+		///<param name="errorCode">The error code from the remote system (already translated)</param>
+		///<param name="exception">the generated exception, if any</param>
+		///<remarks>It is not necessary to determine whether errorCode should be FileNotFound or DirectoryNotFound should the underlying not distinguish as both result in false; however RefreshFailed technically cares on Windows</remarks>
+		protected bool ShouldThrowExceptionForRefreshError(int errorCode, [NotNullWhen(true)] out IOException? exception)
+		{
+			if (IsPassError(errorCode, 0, false)) { exception = null; return false; }
+			var msg = new System.ComponentModel.Win32Exception(errorCode).Message;
+			var epath = ErrorPath;
+			if (epath is not null) msg = epath + ": " + msg;
+			exception = new IOException(msg, errorCode);
+			return true;
+		}
 
 		///<summary>Returns the error code from stat() or the moral equivalent</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
@@ -346,11 +399,7 @@ namespace Emet.FileSystems {
 #else
 		public DateTime LastChangeTimeUTC => throw null;
 #endif
-#if OS_LINUXX64
-		public DateTime CreationTimeUTC => LastChangeTimeUTC;
-#elif OS_MACOSX64
-		public DateTime CreationTimeUTC { get { if (!loaded) _Refresh(); return birthTime; } }
-#elif OS_WIN
+#if OSTYPE_UNIX || OS_WIN
 		public DateTime CreationTimeUTC { get { if (!loaded) _Refresh(); return birthTime; } }
 #else
 		///<summary>Returns the file creation time, if available</summary>

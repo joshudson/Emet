@@ -25,7 +25,7 @@ namespace Emet.FileSystems {
 
 		internal DirectoryEntry(string path, FileSystem.FollowSymbolicLinks symbolicLinkBehavior, FileType type, FileType hint) : base(null)
 		{
-			if (path is null) throw new ArgumentNullException("path cannot be null");
+			if (path is null) throw new ArgumentNullException("path");
 			if (path.Length == 0) throw new ArgumentException("path cannot be the empty string");
 			this.path = path;
 			this.symbolic = symbolicLinkBehavior;
@@ -36,7 +36,7 @@ namespace Emet.FileSystems {
 		internal DirectoryEntry(string directoryname, string name, FileSystem.FollowSymbolicLinks symbolicLinkBehavior, FileType type, FileType hint) : base(null)
 		{
 			if (string.IsNullOrEmpty(directoryname)) directoryname = CurrentDirectoryName;
-			if (name is null) throw new ArgumentNullException("name cannot be null");
+			if (name is null) throw new ArgumentNullException("name");
 			if (name.Length == 0) throw new ArgumentException("name cannot be the empty string");
 			this.directory = directoryname;
 			this.name = name;
@@ -105,6 +105,7 @@ namespace Emet.FileSystems {
 		}
 
 		///<summary>provides the path for generating error messages</summary>
+		///<remarks>may not return null, nor the empty string</remarks>
 		protected override string ErrorPath => Path;
 
 		///<summary>Gets the symbolic link behavior the DirectoryEntry was constructed with</summary>
@@ -132,33 +133,38 @@ namespace Emet.FileSystems {
 
 		///<summary>Returns an instanteous view of the symbolic link resolution of this node</summary>
 		///<remarks>If this is not a symbolic link, returns a new copy of the node itself</remarks>
-		public DirectoryEntry ResolveSymbolicLink() =>
+		public DirectoryEntry ResolveSymbolicLink() => _ResolveSymbolicLink();
+
+		///<summary>Returns an instanteous view of the symbolic link resolution of this node</summary>
+		///<remarks>If this is not a symbolic link, returns a new copy of the node itself</remarks>
+		protected virtual DirectoryEntry _ResolveSymbolicLink() =>
 				new DirectoryEntry(Path, FileSystem.FollowSymbolicLinks.Always,
 					// Passing the hint through happens to do the right thing on all platforms
 					hint == FileType.LinkTargetHintNotAvailable ? FileType.NodeHintNotAvailable : hint, FileType.LinkTargetHintNotAvailable);
 
 		///<summary>Reloads the file node information</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
-		protected override void _Refresh()
-		{
+		protected override void _Refresh() => _Refresh(Path);
+
 #if OSTYPE_UNIX
+		internal void _Refresh(byte[] realpath, FileSystem.FollowSymbolicLinks symbolic)
+		{
 			int cresult;
-			var arg = NameToByteArray(Path);
 #if OS_LINUXX64
 			var statbuf = new NativeMethods.statbuf64();
 			do {
 				if (symbolic == FileSystem.FollowSymbolicLinks.Always)
-					cresult = NativeMethods.__xstat64(NativeMethods.statbuf_version, arg, out statbuf);
+					cresult = NativeMethods.__xstat64(NativeMethods.statbuf_version, realpath, out statbuf);
 				else
-					cresult = NativeMethods.__lxstat64(NativeMethods.statbuf_version, arg, out statbuf);
+					cresult = NativeMethods.__lxstat64(NativeMethods.statbuf_version, realpath, out statbuf);
 			} while (IsEIntrSyscallReturn(cresult));
 #else
 			var statbuf = new NativeMethods.statbuf();
 			do {
 				if (symbolic == FileSystem.FollowSymbolicLinks.Always)
-					cresult = NativeMethods.stat(arg, out statbuf);
+					cresult = NativeMethods.stat(realpath, out statbuf);
 				else
-					cresult = NativeMethods.lstat(arg, out statbuf);
+					cresult = NativeMethods.lstat(realpath, out statbuf);
 			} while (IsEIntrSyscallReturn(cresult));
 #endif
 			bool followerror = false;
@@ -167,12 +173,12 @@ namespace Emet.FileSystems {
 #if OS_LINUXX64
 				var statbuf2 = new NativeMethods.statbuf64();
 				do {
-					cresult = NativeMethods.__xstat64(NativeMethods.statbuf_version, arg, out statbuf2);
+					cresult = NativeMethods.__xstat64(NativeMethods.statbuf_version, realpath, out statbuf2);
 				} while (IsEIntrSyscallReturn(cresult));
 #else
 				var statbuf2 = new NativeMethods.statbuf();
 				do {
-					cresult = NativeMethods.stat(arg, out statbuf2);
+					cresult = NativeMethods.stat(realpath, out statbuf2);
 				} while (IsEIntrSyscallReturn(cresult));
 #endif
 				if (cresult == 0) {
@@ -183,7 +189,7 @@ namespace Emet.FileSystems {
 					followerror = true;
 			}
 			if (cresult != 0) {
-				var exception = GetExceptionFromLastError(ErrorPath, true, 0, false);
+				var exception = GetExceptionFromLastError(Path, ErrorPath, true, 0, false);
 				if (exception != null) throw exception;
 				if (!followerror) {
 					Clear();
@@ -195,10 +201,17 @@ namespace Emet.FileSystems {
 			FillStatResult(ref statbuf);
 			type = (FileType)(statbuf.st_mode & FileTypeMask);
 			hint = FileType.LinkTargetHintNotAvailable;
+		}
+#endif
+
+		internal void _Refresh(string realpath)
+		{
+#if OSTYPE_UNIX
+			_Refresh(NameToByteArray(realpath), symbolic);
 #elif OS_WIN
 			IntPtr handle = IOErrors.InvalidFileHandle;
 			try {
-				handle = NativeMethods.CreateFileW(Path, NativeMethods.FILE_READ_ATTRIBUTES,
+				handle = NativeMethods.CreateFileW(realpath, NativeMethods.FILE_READ_ATTRIBUTES,
 						NativeMethods.FILE_SHARE_ALL, IntPtr.Zero, NativeMethods.OPEN_EXISTING,
 						(symbolic == FileSystem.FollowSymbolicLinks.Always
 							|| symbolic == FileSystem.FollowSymbolicLinks.IfNotDirectory && hint == FileType.File)
@@ -206,17 +219,17 @@ namespace Emet.FileSystems {
 						: NativeMethods.FILE_FLAG_BACKUP_SEMANTICS | NativeMethods.FILE_FLAG_OPEN_REPARSE_POINT,
 						IntPtr.Zero);
 				if (handle == IOErrors.InvalidFileHandle) {
-					var exception = GetExceptionFromLastError(ErrorPath, true, IOErrors.DeletePending, false);
+					var exception = GetExceptionFromLastError(Path, ErrorPath, true, IOErrors.DeletePending, false);
 					if (exception != null) throw exception;
 					IntPtr handle2 = IOErrors.InvalidFileHandle;
 					try {
 						var ff = new NativeMethods.WIN32_FIND_DATA();
-						handle2 = NativeMethods.FindFirstFileW(Path, out ff);
+						handle2 = NativeMethods.FindFirstFileW(realpath, out ff);
 						if (handle2 != IOErrors.InvalidFileHandle) {
 							FillFindDataResult(ref ff);
 							FillMakeStuffUpBecauseInaccessible();
 						} else {
-							var exception2 = GetExceptionFromLastError(ErrorPath, true, 0, false);
+							var exception2 = GetExceptionFromLastError(Path, ErrorPath, true, 0, false);
 							if (exception2 != null) throw exception2;
 							Clear();
 							type = FileType.DoesNotExist;

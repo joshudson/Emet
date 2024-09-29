@@ -194,9 +194,100 @@ static class Program {
 						throw new AssertionFailed("RemoveDirectory was recursive when asked not to be");
 					} catch (IOException e) { Assert("exception contains faulting path", e.Message.Contains(deltarget)); }
 					Assert("directory removed", FileSystem.RemoveDirectory(Path.Combine(testpath, "r1"), true));
-					Assert("directory actually removed", !FileSystem.DirectoryExists(Path.Combine(testpath, "r1")));
-					Assert("Symbolic link not traversed", FileSystem.DirectoryExists(Path.Combine(testpath, "dir2")));
+					Assert("actually directory removed", !FileSystem.DirectoryExists(Path.Combine(testpath, "r1")));
+					Assert("Symbolic link traversed", FileSystem.DirectoryExists(Path.Combine(testpath, "dir2")));
 			});
+			RunSomeTest("Testing VirtualizeWholePreserveCurrentDirectory().CreateDirectory creates directory chains", () => {
+				using (var v = DiskVirtualFileSystem.VirtualizeWholePreserveCurrentDirectory())
+				{
+					var path = v.CombinePath(testpath, "abc", "def");
+					v.CreateDirectory(path);
+					Assert("directory created", v.GetDirectoryEntry(path).FileType == FileType.Directory);
+					Assert("directory removed", v.RemoveDirectory(v.GetDirectoryName(path), true));
+				}
+			});
+			using (var v = DiskVirtualFileSystem.VirtualizeWholePreserveCurrentDirectory()) {
+				var path = v.CombinePath(testpath, "chroot");
+				v.CreateDirectory(path);
+				using (var chroot = v.CreateChild(path)) {
+					RunSomeTest("Testing VirtualizeChrootDirectory path traversal", () => {
+						chroot.CreateDirectory("aaa");
+						chroot.CreateSymbolicLink("Hi", "aaa/hi", FileType.File);
+						Assert("correct demo text", chroot.ReadLink("aaa/hi") == "Hi");
+						chroot.CreateDirectory("bbb");
+						chroot.CreateSymbolicLink(chroot.RootDirectoryName + "aaa", "bbb/aaa");
+						chroot.CreateSymbolicLink(chroot.RootDirectoryName + "aaa", "bbb/ddd");
+						chroot.CreateSymbolicLink("ddd", "bbb/ccc");
+						Assert("correct absolute link text", chroot.ReadLink("bbb/ddd") == chroot.RootDirectoryName + "aaa");
+						Assert("correct link text", chroot.ReadLink("/bbb/ccc/hi") == "Hi");
+					});
+					RunSomeTest("Testing traversal ending in /", () => {
+						chroot.CreateSymbolicLink(chroot.RootDirectoryName, "root");
+						using (var handle = chroot.OpenDirectory("/root", FileSystem.FollowSymbolicLinks.Always)) {
+							Assert("correct object identity", new FileSystemNode(handle).InodeNumber ==
+									new DirectoryEntry(Path.Combine(testpath, "chroot"), FileSystem.FollowSymbolicLinks.Never).InodeNumber);
+						}
+					});
+					RunSomeTest("Testing OpenVirtualFile", () => {
+						using (var stream = chroot.OpenVirtualFile("bbb/file", FileMode.Create, FileAccess.Write)) {
+							using (var writer = new StreamWriter(stream, System.Text.Encoding.ASCII, 1024, true))
+								writer.WriteLine("Hello");
+						}
+						using (var stream = chroot.OpenVirtualFile("bbb/file", FileMode.Open, FileAccess.Read)) {
+							using (var reader = new StreamReader(stream, System.Text.Encoding.ASCII, false, 1024, true))
+								Assert("correct contents", reader.ReadLine()?.TrimEnd() == "Hello");
+						}
+					});
+					RunSomeTest("Testing VirtualizeChrootDirectory().CreateHardLink", () => {
+						chroot.CreateHardLink("bbb/file", "bbb/file2");
+						Assert("same inode number", chroot.GetDirectoryEntry("bbb/file").InodeNumber == chroot.GetDirectoryEntry("bbb/file2").InodeNumber);
+					});
+					RunSomeTest("Testing VirtualizeChrootDirectory().RenameReplace", () => {
+						using (var stream = chroot.OpenVirtualFile("bbb/file3", FileMode.Create, FileAccess.Write)) {};
+						chroot.RenameReplace("bbb/file2", "bbb/file3");
+						Assert("same inode number", chroot.GetDirectoryEntry("bbb/file").InodeNumber == chroot.GetDirectoryEntry("bbb/file3").InodeNumber);
+					});
+					RunSomeTest("Testing VirtualizeChrootDirectory().RemoveFile", () => {
+						chroot.RemoveFile("bbb/file3");
+						Assert("removed", chroot.GetDirectoryEntry("bbb/file3").FileType == FileType.DoesNotExist);
+					});
+					RunSomeTest("Testing VirtualizeChrootDirectory().GetDirectoryContents", () => {
+						bool foundfile = false;
+						bool foundaaa = false;
+						bool foundccc = false;
+						bool foundddd = false;
+						foreach (var entry in chroot.GetDirectoryContentsOrThrow("/bbb")) {
+							switch (entry.Name) {
+								case "file": foundfile = true; Assert("a file: 'file'", entry.FileType == FileType.File); break;
+								case "aaa": foundaaa = true; Assert("a symlink: 'aaa'", entry.FileType == FileType.SymbolicLink); break;
+								case "ccc": foundccc = true; Assert("a symlink: 'ccc'", entry.FileType == FileType.SymbolicLink); break;
+								case "ddd": foundddd = true; Assert("a symlink: 'ddd'", entry.FileType == FileType.SymbolicLink); break;
+							}
+						}
+						Assert("'file'", foundfile);
+						Assert("'aaa'", foundaaa);
+						Assert("'ccc'", foundccc);
+						Assert("'ddd'", foundddd);
+					});
+					RunSomeTest("Testing VirtualizeChrootDirectory().GetDirectoryContentsOrThrow throws", () => {
+						try {
+							chroot.GetDirectoryContentsOrThrow("nonextant");
+							throw new AssertionFailed("thrown");
+						} catch (DirectoryNotFoundException exx) {}
+					});
+					RunSomeTest("Testing VirtualizeChrootDirectory().GetDirectoryContentsOrNull returns null", () => {
+						Assert("null", chroot.GetDirectoryContentsOrNull("nonextant") is null);
+					});
+					RunSomeTest("Testing VirtualizeChrootDirectory().GetDirectoryContentsOrEmpty returns empty", () => {
+						Assert("empty", chroot.GetDirectoryContentsOrEmpty("nonextant")?.GetEnumerator().MoveNext() == false);
+					});
+					RunSomeTest("Testing VirtualizeChrootDirectory().RemoveDirectory", () => {
+						chroot.CreateDirectory("aaa/tmp");
+						chroot.RemoveDirectory("aaa", true); // Should probably be last test in chain
+						Assert("removed", chroot.GetDirectoryEntry("aaa").FileType == FileType.DoesNotExist);
+					});
+				}
+			}
 		}
 		catch (Exception ex) {
 			Environment.ExitCode = 1;

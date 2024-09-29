@@ -9,6 +9,13 @@ namespace Emet.FileSystems {
 	internal static class NativeMethods {
 #if OSTYPE_UNIX
 		internal static readonly DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+		internal const uint O_RDONLY = 0;
+		internal const uint O_WRONLY = 1;
+		internal const uint O_RDWR = 2;
+
+		internal const uint DefaultFileMode = 0b110_110_110;
+		internal const uint DefaultDirectoryMode = 0b111_111_111;
 #endif
 
 #if OS_LINUXX64
@@ -68,12 +75,23 @@ namespace Emet.FileSystems {
 		internal const int _PC_LINK_MAX = 0;
 		internal const int _PC_2_SYMLINKS = 20;
 		internal const int MSDOS_SUPER_MAGIC = 0x4d44;
+		internal const uint O_PATH = 0x200000;
+		internal const uint O_DIRECTORY = 0x10000;
+		internal const uint O_NOFOLLOW  = 0x20000;
+		internal const uint O_APPEND = 0x400;
+		internal const uint O_CREAT = 0x40;
+		internal const uint O_EXCL = 0x80;
+		internal const uint O_TRUNC = 0x200;
+		internal const uint O_CLOEXEC = 0x80000;
+
+		[DllImport("libc.so.6", SetLastError=true)]
+		internal static extern int mkdir([MarshalAs(UnmanagedType.LPArray)] byte[] path, uint mode);
 
 		[DllImport("libc.so.6", SetLastError=true)]
 		internal static extern IntPtr opendir([MarshalAs(UnmanagedType.LPArray)] byte[] path);
 
 		[DllImport("libc.so.6", SetLastError=true)]
-		internal static extern IntPtr fdopendir(IntPtr handle);
+		internal static extern IntPtr fdopendir(int handle);
 
 		[DllImport("libc.so.6", SetLastError=true)]
 		internal static extern void rewinddir(IntPtr dir);
@@ -82,10 +100,10 @@ namespace Emet.FileSystems {
 		internal static extern int closedir(IntPtr dir);
 
 		[DllImport("libc.so.6", SetLastError=true)]
-		internal static extern int close(IntPtr handle);
+		internal static extern int close(int handle);
 
 		[DllImport("libc.so.6", SetLastError=true)]
-		internal static extern IntPtr open([MarshalAs(UnmanagedType.LPArray)] byte[] path, int flags);
+		internal static extern int open([MarshalAs(UnmanagedType.LPArray)] byte[] path, uint flags, uint mode);
 
 		[DllImport("libc.so.6", SetLastError=true)]
 		internal static extern int readdir64_r(IntPtr dir, ref dirent64 entry, out IntPtr result);
@@ -166,12 +184,22 @@ namespace Emet.FileSystems {
 		internal const byte dirent_d_name_offset = 21;
 		internal const int _PC_LINK_MAX = 1;
 		internal const int _PC_2_SYMLINKS = 15;
+		internal const uint O_DIRECTORY = 0x100000;
+		internal const uint O_NOFOLLOW = 0x100;
+		internal const uint O_APPEND = 0x8;
+		internal const uint O_CREAT = 0x200;
+		internal const uint O_TRUNC = 0x400;
+		internal const uint O_EXCL = 0x800;
+		internal const uint O_CLOEXEC = 0x1000000;
+
+		[DllImport("libSystem.dylib", SetLastError=true)]
+		internal static extern int mkdir([MarshalAs(UnmanagedType.LPArray)] byte[] path, uint mode);
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
 		internal static extern IntPtr opendir([MarshalAs(UnmanagedType.LPArray)] byte[] path);
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
-		internal static extern IntPtr fdopendir(IntPtr handle);
+		internal static extern IntPtr fdopendir(int handle);
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
 		internal static extern IntPtr rewinddir(IntPtr dir);
@@ -180,10 +208,10 @@ namespace Emet.FileSystems {
 		internal static extern int closedir(IntPtr dir);
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
-		internal static extern int close(IntPtr handle);
+		internal static extern int close(int handle);
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
-		internal static extern IntPtr open([MarshalAs(UnmanagedType.LPArray)] byte[] path, int flags);
+		internal static extern int open([MarshalAs(UnmanagedType.LPArray)] byte[] path, uint flags, uint mode);
 
 		[DllImport("libSystem.dylib", SetLastError=true)]
 		internal static extern IntPtr readdir(IntPtr dir);
@@ -241,11 +269,15 @@ namespace Emet.FileSystems {
 		internal const uint FILE_ATTRIBUTE_DIRECTORY = 16;
 		internal const uint FILE_ATTRIBUTE_REPARSE_POINT = 1024;
 		internal const uint FILE_READ_ATTRIBUTES = 128;
+		internal const uint FILE_READ_DATA = 1;
+		internal const uint FILE_WRITE_DATA = 2;
+		internal const uint FILE_APPEND_DATA = 4;
 		internal const uint DELETE = 65536;
 		internal const uint SYNCHRONIZE = 0x100000;
 		internal const uint FILE_FLAG_BACKUP_SEMANTICS = 0x2000000;
 		internal const uint FILE_FLAG_OPEN_NO_RECALL = 0x1000000;
 		internal const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x200000;
+		internal const uint FILE_FLAG_OVERLAPPED = 0x40000000;
 		internal const uint SYMBOLIC_LINK_FLAG_DIRECTORY = 1;
 		internal const uint SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE = 2;
 		internal const uint FSCTL_GET_REPARSE_POINT = 589992;
@@ -428,6 +460,9 @@ namespace Emet.FileSystems {
 
 		[DllImport("ntdll.dll")]
 		internal static extern int RtlNtStatusToDosError(int ntstatus);
+
+		[DllImport("kernel32.dll", SetLastError=true)]
+		internal static extern byte CreateDirectory(string pathname, IntPtr lpSecurityAttributes);
 
 		// Used for deleting a file; deletepending is 4 bytes long despite only 1 byte used, so we must give it a 4 byte aligned pointer.
 		[DllImport("kernel32.dll", SetLastError=true)]

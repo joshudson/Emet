@@ -23,6 +23,7 @@ namespace Emet.FileSystems {
 		public static readonly int IoSeekError2 = 0xFFFE;
 		public static readonly int NoSuchDevice = 6;
 		public static readonly int NoSuchHandle = 7;
+		public static readonly int WouldBlock = 11;
 		public static readonly int OutOfMemory = 12;
 		public static readonly int NoSuchMemoryAddress = 14;
 		public static readonly int FileIsLocked = 16;
@@ -30,9 +31,9 @@ namespace Emet.FileSystems {
 		public static readonly int AlreadyExists = 0xFFFE;
 		public static readonly int CannotCreate = 0xFFFE;
 		public static readonly int NotSameDevice = 18;
-		public static readonly int IsADirectory = 19;
 		public static readonly int IsNotADirectory = 20;
-		public static readonly int BadArgument = 21;
+		public static readonly int IsADirectory = 21;
+		public static readonly int BadArgument = 22;
 		public static readonly int OutOfFiles = 23;
 		public static readonly int TooManyOpenFiles = 24;
 		public static readonly int NotATerminal = 25;
@@ -131,6 +132,7 @@ namespace Emet.FileSystems {
 		public static readonly int IoSeekError2 = unchecked((int)0x8007001B);
 		public static readonly int NoSuchDevice = unchecked((int)0x8007000F);
 		public static readonly int NoSuchHandle = unchecked((int)0x80070006);
+		public static readonly int WouldBlock = unchecked((int)0x80072733);
 		public static readonly int OutOfMemory = unchecked((int)0x8007000E);
 		public static readonly int NoSuchMemoryAddress = unchecked((int)0x800701E7);
 		public static readonly int FileIsLocked = unchecked((int)0x80070020);
@@ -222,6 +224,8 @@ namespace Emet.FileSystems {
 		public static readonly int NoSuchDevice = 6;
 		///<summary>Oh noes! That handle was closed already</summary>
 		public static readonly int NoSuchHandle = 7;
+		///<summary>Operation would block but non-blocking was requested: operation cancelled</summary>
+		public static readonly int WouldBlock = 11;
 		///<summary>Ran out of memory (usually kernel memory)</summary>
 		public static readonly int OutOfMemory = 12;
 		///<summary>Oh noes! That memory address wasn't mapped.</summary>
@@ -236,12 +240,12 @@ namespace Emet.FileSystems {
 		public static readonly int CannotCreate = unchecked((int)0x80070052);
 		///<summary>Tried to move or link across devices</summary>
 		public static readonly int NotSameDevice = 18;
-		///<summary>Target is a directory</summary>
-		public static readonly int IsADirectory = 19;
 		///<summary>Target is not a directory</summary>
 		public static readonly int IsNotADirectory = 20;
+		///<summary>Target is a directory</summary>
+		public static readonly int IsADirectory = 22;
 		///<summary>Oh noes! Bad argument to system call</summary>
-		public static readonly int BadArgument = 21;
+		public static readonly int BadArgument = 23;
 		///<summary>Cannot create any more files on that disk</summary>
 		public static readonly int OutOfFiles = 23;
 		///<summary>Cannot open any more file</summary>

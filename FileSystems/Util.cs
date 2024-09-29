@@ -7,6 +7,7 @@ using System.IO;
 using Encoding = System.Text.Encoding;
 using Marshal = System.Runtime.InteropServices.Marshal;
 using StringBuilder = System.Text.StringBuilder;
+using Win32Exception = System.ComponentModel.Win32Exception;
 
 namespace Emet.FileSystems {
 
@@ -111,6 +112,23 @@ namespace Emet.FileSystems {
 			return bytes;
 		}
 
+		internal static void NameToByteArray(byte[] namebytes, int byteoffset, string name, int offset, int length)
+		{
+			namebytes[Encoding.UTF8.GetBytes(name, offset, length, namebytes, byteoffset)] = 0;
+		}
+
+		internal static byte[] NameToByteArrayExact(string path)
+		{
+			var count = Encoding.UTF8.GetByteCount(path);
+			if (count > 255) throw GetExceptionFromErrno(IOErrors.BadPathName, path, path, new Win32Exception(IOErrors.BadPathName).Message);
+			var bytes = new byte[count];
+			Encoding.UTF8.GetBytes(path, 0, path.Length, bytes, 0);
+			for (int i = 0; i < count; i++)
+				if (bytes[i] == 0)
+					throw new ArgumentException("An embedded null byte was found in the path");
+			return bytes;
+		}
+
 		internal sealed class ErrorPathBuilder {
 			private struct Triplet {
 				internal byte[] Bytes { get; }
@@ -154,28 +172,28 @@ namespace Emet.FileSystems {
 		internal static bool IsEIntrSyscallReturn(int ereturn)
 			=> ereturn < 0 && Marshal.GetLastWin32Error() == IOErrors.Interrupted;
 
-		internal static bool IsEIntrSyscallReturnOrException(int ereturn, string path, bool canpass, int keep, bool writing, out IOException exception)
+		internal static bool IsEIntrSyscallReturnOrException(int ereturn, string chkpath, string path, bool canpass, int keep, bool writing, out IOException exception)
 		{
 			if (ereturn >= 0) { exception = null; return false; }
 			int errno = Marshal.GetLastWin32Error();
 			if (errno == IOErrors.Interrupted) { exception = null; return true; }
 			if (canpass && IsPassError(errno, keep, writing)) { exception = null; return false; }
-			var ci = new System.ComponentModel.Win32Exception();
-			exception = GetExceptionFromErrno(errno, path, ci.Message);
+			var ci = new Win32Exception();
+			exception = GetExceptionFromErrno(errno, chkpath, path, ci.Message);
 			return false;
 		}
 
-		internal static bool IsEIntrSyscallReturnOrException(long ereturn, string path, bool canpass, int keep, bool writing, out IOException exception)
+		internal static bool IsEIntrSyscallReturnOrException(long ereturn, string chkpath, string path, bool canpass, int keep, bool writing, out IOException exception)
 		{
 			if (ereturn >= 0) { exception = null; return false; }
-			return IsEIntrSyscallReturnOrException(-1, path, canpass, keep, writing, out exception);
+			return IsEIntrSyscallReturnOrException(-1, chkpath, path, canpass, keep, writing, out exception);
 		}
 
 #endif
 
 		internal static bool IsPassError(int errno, int keep, bool writing)
 			=> (errno == IOErrors.FileNotFound || errno == IOErrors.PathNotFound
-				|| errno == IOErrors.IsADirectory || errno == IOErrors.IsNotADirectory
+				|| errno == IOErrors.IsNotADirectory || (!writing && errno == IOErrors.IsNotADirectory)
 				|| errno == IOErrors.BadPathName || errno == IOErrors.TooManySymbolicLinks
 				|| errno == keep || (!writing && errno == IOErrors.PermissionDenied));
 
@@ -183,7 +201,7 @@ namespace Emet.FileSystems {
 		internal static IOException GetExceptionFromNtStatus(int status, string path, bool canpass, int keep, bool writing)
 		{
 			NativeMethods.SetLastError(NativeMethods.RtlNtStatusToDosError(status));
-			return GetExceptionFromLastError(path, canpass, keep, writing);
+			return GetExceptionFromLastError(path, path, canpass, keep, writing);
 		}
 
 		internal static IOException GetExceptionFromNtStatus(int status, Func<string> path, bool canpass, int keep, bool writing)
@@ -193,7 +211,7 @@ namespace Emet.FileSystems {
 		}
 #endif
 
-		internal static IOException GetExceptionFromLastError(string path, bool canpass, int keep, bool writing)
+		internal static IOException GetExceptionFromLastError(string chkpath, string path, bool canpass, int keep, bool writing)
 		{
 			int errno = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
 			if (errno == 0) return new IOException((path is null) ? "error code lost" : (path + ": error code lost"));
@@ -201,8 +219,8 @@ namespace Emet.FileSystems {
 			errno |= unchecked((int)0x80070000);
 #endif
 			if (canpass && IsPassError(errno, keep, writing)) return null;
-			var ci = new System.ComponentModel.Win32Exception();
-			return GetExceptionFromErrno(errno, path, ci.Message);
+			var ci = new Win32Exception();
+			return GetExceptionFromErrno(errno, chkpath, path, ci.Message);
 		}
 
 		internal static IOException GetExceptionFromLastError(Func<string> path, bool canpass, int keep, bool writing)
@@ -213,23 +231,25 @@ namespace Emet.FileSystems {
 			errno |= unchecked((int)0x80070000);
 #endif
 			if (canpass && IsPassError(errno, keep, writing)) return null;
-			var ci = new System.ComponentModel.Win32Exception();
-			return GetExceptionFromErrno(errno, path?.Invoke(), ci.Message);
+			var ci = new Win32Exception();
+			var path2 = path?.Invoke();
+			return GetExceptionFromErrno(errno, path2, path2, ci.Message);
 		}
 
-		internal static IOException GetExceptionFromErrno(int errno, string path, string cimsg)
+		internal static IOException GetExceptionFromErrno(int errno, string chkpath, string path, string cimsg)
 		{
 			var msg = (path is null) ? cimsg : (path + ": " + cimsg);
 			if (errno == IOErrors.FileNotFound) {
 #if OSTYPE_UNIX
 				// Extra check to translate exception type
-				if (path is string) {
-					var idx = path.LastIndexOf('/');
-					if (idx >= 0 && !FileSystem.DirectoryExists(path.Substring(0, idx)))
-						return new DirectoryNotFoundException(msg); // DriveNotFound can't happen here
+				if (chkpath is not null) {
+					if (chkpath.Length == 0) return SetHResult(new DirectoryNotFoundException(msg), IOErrors.FileNotFound); // It's preordained
+					var idx = chkpath.LastIndexOf('/');
+					if (idx >= 0 && !FileSystem.DirectoryExists(chkpath.Substring(0, idx)))
+						return SetHResult(new DirectoryNotFoundException(msg), IOErrors.FileNotFound); // DriveNotFound can't happen here
 				}
 #endif
-				return new FileNotFoundException(msg);
+				return SetHResult(new FileNotFoundException(msg), IOErrors.FileNotFound);
 			} else if (errno == IOErrors.PathNotFound) {
 #if OS_WIN
 				// Extra check to translate exception type
@@ -237,12 +257,30 @@ namespace Emet.FileSystems {
 					(path[0] >= 'A' && path[0] <= 'Z' || path[0] >= 'a' && path[0] <= 'z'))
 				{
 					if (!FileSystem.DirectoryExists(path.Substring(0, 3)))
-						throw new DriveNotFoundException(msg);
+						return SetHResult(new DriveNotFoundException(msg), IOErrors.PathNotFound);
 				}
 #endif
-				return new DirectoryNotFoundException(msg);
+				return SetHResult(new DirectoryNotFoundException(msg), IOErrors.PathNotFound);
 			} else
 				return new IOException(msg, errno);
 		}
+
+		// Our target is too old to directly write HResult = value, so do the long way around.
+		// I really do still need .NET Framework 4.8 builds so this just isn't changing.
+		private static System.Reflection.MethodInfo sethresult;
+		internal static IOException SetHResult(IOException exception, int value)
+		{
+			sethresult ??= typeof(Exception).GetProperty("HResult", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetMethod;
+			sethresult.Invoke(exception, new object[]{value});
+			return exception;
+		}
+	}
+}
+
+namespace System {
+	internal sealed class NotNullWhenAttribute : Attribute {
+		private bool value;
+		public bool ReturnValue => value;
+		public NotNullWhenAttribute(bool returnValue) { value = returnValue; }
 	}
 }
