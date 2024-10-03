@@ -29,7 +29,7 @@ namespace Emet.FileSystems {
 			if (path.Length == 0) throw new ArgumentException("path cannot be the empty string");
 			this.path = path;
 			this.symbolic = symbolicLinkBehavior;
-			this.type = type;
+			this.fileType = type;
 			this.hint = hint;
 		}
 
@@ -41,10 +41,10 @@ namespace Emet.FileSystems {
 			this.directory = directoryname;
 			this.name = name;
 			this.symbolic = symbolicLinkBehavior;
-			this.type = type;
+			this.fileType = type;
 			this.hint = hint;
-			if (type == FileType.SymbolicLink && symbolic != FileSystem.FollowSymbolicLinks.Never)
-				this.type = FileType.NodeHintNotAvailable; // Forces resolution on accessing FileType
+			if (this.fileType == FileType.SymbolicLink && symbolic != FileSystem.FollowSymbolicLinks.Never)
+				this.fileType = FileType.NodeHintNotAvailable; // Forces resolution on accessing FileType
 		}
 
 #if OS_WIN
@@ -53,11 +53,11 @@ namespace Emet.FileSystems {
 			this.directory = directoryname;
 			this.name = filename;
 			this.symbolic = symbolicLinkBehavior;
-			this.type = FileAttributesToFileType(ff.dwFileAttributes, ff.dwReserved0);
-			this.hint = (type == FileType.SymbolicLink || type == FileType.ReparsePoint)
+			this.fileType = FileAttributesToFileType(ff.dwFileAttributes, ff.dwReserved0);
+			this.hint = (fileType == FileType.SymbolicLink || fileType == FileType.ReparsePoint)
 				? ((ff.dwFileAttributes & NativeMethods.FILE_ATTRIBUTE_DIRECTORY) == 0 ? FileType.File : FileType.Directory)
-				: type;
-			if (type == FileType.SymbolicLink && (symbolic == FileSystem.FollowSymbolicLinks.Always
+				: fileType;
+			if (this.fileType == FileType.SymbolicLink && (symbolic == FileSystem.FollowSymbolicLinks.Always
 					|| (symbolic == FileSystem.FollowSymbolicLinks.IfNotDirectory && hint != FileType.Directory))) {
 				_Refresh();
 			} else {
@@ -66,7 +66,6 @@ namespace Emet.FileSystems {
 		}
 #endif
 
-		private FileType type;
 		private FileType hint;
 		private FileSystem.FollowSymbolicLinks symbolic;
 		private string name;
@@ -111,9 +110,6 @@ namespace Emet.FileSystems {
 		///<summary>Gets the symbolic link behavior the DirectoryEntry was constructed with</summary>
 		public FileSystem.FollowSymbolicLinks FollowSymbolicLinks => symbolic;
 
-		///<summary>Gets the type of the FileSystemNode</summary>
-		public override FileType FileType => (type == FileType.NodeHintNotAvailable) ? base.FileType : type;
-
 		///<summary>Gets the link target hint, if available</summary>
 		///<remarks>All callers must be prepared to handle LinkTargetHintNotAvailable; you probably want LinkTargetType instead</remarks>
 		public FileType LinkTargetHint => hint;
@@ -145,6 +141,9 @@ namespace Emet.FileSystems {
 		///<summary>Reloads the file node information</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
 		protected override void _Refresh() => _Refresh(Path);
+
+		///<summary>Sets the value of LinkTargetHint after a successful _Refresh() by a derived class</summary>
+		protected void SetLinkTargetHint(FileType linkTargetHint) { this.hint = linkTargetHint; }
 
 #if OSTYPE_UNIX
 		internal void _Refresh(byte[] realpath, FileSystem.FollowSymbolicLinks symbolic)
@@ -193,13 +192,13 @@ namespace Emet.FileSystems {
 				if (exception != null) throw exception;
 				if (!followerror) {
 					Clear();
-					type = FileType.DoesNotExist;
+					fileType = FileType.DoesNotExist;
 					hint = FileType.DoesNotExist;
 					return ;
 				}
 			}
 			FillStatResult(ref statbuf);
-			type = (FileType)(statbuf.st_mode & FileTypeMask);
+			fileType = (FileType)(statbuf.st_mode & FileTypeMask);
 			hint = FileType.LinkTargetHintNotAvailable;
 		}
 #endif
@@ -232,7 +231,7 @@ namespace Emet.FileSystems {
 							var exception2 = GetExceptionFromLastError(Path, ErrorPath, true, 0, false);
 							if (exception2 != null) throw exception2;
 							Clear();
-							type = FileType.DoesNotExist;
+							fileType = FileType.DoesNotExist;
 							hint = FileType.DoesNotExist;
 						}
 					} finally {
@@ -241,8 +240,9 @@ namespace Emet.FileSystems {
 					return;
 				}
 				var typeraw = LoadFromHandle(handle);
-				type = FileAttributesToFileType(typeraw, 0);
-				if (symbolic == FileSystem.FollowSymbolicLinks.IfNotDirectory &&
+				if (symbolic == FileSystem.FollowSymbolicLinks.Never && (typeraw & NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+					hint = ((typeraw & NativeMethods.FILE_ATTRIBUTE_DIRECTORY) != 0) ? FileType.Directory : FileType.File;
+				else if (symbolic == FileSystem.FollowSymbolicLinks.IfNotDirectory &&
 					(typeraw & (NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT | NativeMethods.FILE_ATTRIBUTE_DIRECTORY))
 						== NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT) {
 					hint = FileType.File;

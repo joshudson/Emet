@@ -16,6 +16,8 @@
     <DefineConstants Condition="'$(RuntimeIdentifier)' == 'win'">$(DefineConstants);OS_WIN</DefineConstants>
     <DefineConstants Condition="'$(RuntimeIdentifier)' == 'win7-x86'">$(DefineConstants);OS_WIN</DefineConstants>
     <DefineConstants Condition="'$(RuntimeIdentifier)' == 'win7-x64'">$(DefineConstants);OS_WIN</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeIdentifier)' == 'win-x86'">$(DefineConstants);OS_WIN</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeIdentifier)' == 'win-x64'">$(DefineConstants);OS_WIN</DefineConstants>
     <DefineConstants Condition="'$(RuntimeIdentifier)' == 'linux-x64'">$(DefineConstants);OS_LINUXX64;OSTYPE_UNIX</DefineConstants>
     <DefineConstants Condition="'$(RuntimeIdentifier)' == 'osx-x64'">$(DefineConstants);OS_MACOS64;OSTYPE_UNIX</DefineConstants>
   </PropertyGroup>

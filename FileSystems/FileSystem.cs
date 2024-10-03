@@ -574,6 +574,7 @@ namespace Emet.FileSystems {
 			return true;
 		}
 
+#if DONT_TRUST_NOFOLLOW
 		private class ByteArrayDirectoryEntry : FileSystemNode
 		{
 			internal ByteArrayDirectoryEntry(byte[] bytepath, ErrorPathBuilder builder) : base(null)
@@ -594,7 +595,9 @@ namespace Emet.FileSystems {
 				}
 			}
 		}
+#endif
 #elif OS_WIN
+		// RemoveDirectory(path, recurse)
 		{
 			if (path is null) throw new ArgumentNullException("path");
 			if (path.Length == 0) throw new ArgumentOutOfRangeException("path", "path cannot be the empty string");
@@ -839,7 +842,7 @@ namespace Emet.FileSystems {
 		// List of DirectoryEntiry; this class actually exists so that callers don't take a dependency on downcasting
 		// IEnumerable<DirectoryEntry> to List<DirectoryEntry>.  I've switched back and forth between yield return and
 		// list more than once.
-		internal class DirectoryEntryList : IEnumerable<DirectoryEntry>, IEnumerator<DirectoryEntry> {
+		internal sealed class DirectoryEntryList : IEnumerable<DirectoryEntry>, IEnumerator<DirectoryEntry> {
 			private int clist;
 			private int alist;
 			private DirectoryEntry[] list;

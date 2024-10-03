@@ -41,8 +41,16 @@ namespace Emet.FileSystems {
 			{
 				SafeFileHandle handle = null;
 				try {
+#if OSTYPE_UNIX
 					handle = OpenDirectory(MakeAbsolute(path), followSymbolicLinks, false);
-					var r = VirtualizeChrootDirectory(handle);
+					var r = new VirtualChroot(handle);
+#elif OS_WIN
+					path = MakeAbsolute(path);
+					handle = GetDirectoryHandle(path, path, false, followSymbolicLinks == FileSystem.FollowSymbolicLinks.Always, false);
+					var r = new VirtualChroot(path, handle);
+#else
+				SYNTAX_ERROR
+#endif
 					handle = null;
 					return r;
 				} finally {
@@ -203,8 +211,15 @@ namespace Emet.FileSystems {
 			{
 				SafeFileHandle handle = null;
 				try {
+#if OSTYPE_UNIX
 					handle = OpenDirectory(path, followSymbolicLinks, false);
-					var r = VirtualizeChrootDirectory(handle);
+					var r = new VirtualChroot(handle);
+#elif OS_WIN
+					handle = GetDirectoryHandle(path, path, false, followSymbolicLinks == FileSystem.FollowSymbolicLinks.Always, false);
+					var r = new VirtualChroot(path, handle);
+#else
+					SYNTAX ERROR
+#endif
 					handle = null;
 					return r;
 				} finally {
@@ -223,6 +238,14 @@ namespace Emet.FileSystems {
 #elif OS_WIN
 				if (NativeMethods.CreateDirectory(path, IntPtr.Zero) != 0) return true;
 				if (Marshal.GetLastWin32Error() == (IOErrors.AlreadyExists & 0xFFFF)) return false;
+				if (Marshal.GetLastWin32Error() == (IOErrors.PathNotFound & 0xFFFF)) {
+					var dname = Path.GetDirectoryName(path);
+					if (dname.Length > 0 && dname != "." && dname != path) {
+						CreateDirectory(dname);
+						if (NativeMethods.CreateDirectory(path, IntPtr.Zero) != 0) return true;
+						if (Marshal.GetLastWin32Error() == (IOErrors.AlreadyExists & 0xFFFF)) return false;
+					}
+				}
 				throw GetExceptionFromLastError(path, path, false, 0, true);
 #endif
 			}
@@ -386,13 +409,11 @@ namespace Emet.FileSystems {
 				}
 		}
 
-		public static IDiskVirtualFileSystem VirtualizeChrootDirectory(SafeFileHandle handle) => new VirtualChroot(handle);
-
 		internal sealed class VirtualChroot : IDiskVirtualFileSystem
 		{
-			private SafeFileHandle handle;
+			private readonly SafeFileHandle handle;
 
-			internal VirtualChroot(SafeFileHandle handle) { this.handle = handle; }
+			public VirtualChroot(SafeFileHandle handle) { this.handle = handle; }
 
 			public bool SupportsCreationTime => false;
 			public bool SupportsAccessTime => true;
@@ -414,7 +435,7 @@ namespace Emet.FileSystems {
 				SafeFileHandle handle = null;
 				try {
 					handle = OpenDirectory(path, followSymbolicLinks, false);
-					var r = VirtualizeChrootDirectory(handle);
+					var r = new VirtualChroot(handle);
 					handle = null;
 					return r;
 				} finally {
@@ -732,7 +753,7 @@ namespace Emet.FileSystems {
 					var epb = new ErrorPathBuilder();
 					bool pushed = false;
 					epb.Push(name, 0, name.Length, ref pushed);
-      		return FileSystem.RemoveDirectory(finalpath, 0, recurse ? 1 : 0, epb);
+					return FileSystem.RemoveDirectory(finalpath, 0, recurse ? 1 : 0, epb);
 				}
 			}
 
@@ -749,7 +770,7 @@ namespace Emet.FileSystems {
 				if (ex is not null) throw ex;
 			}
 
-			public void Dispose() { handle.Dispose(); handle = null; }
+			public void Dispose() { handle.Dispose(); }
 
 			private sealed class VirtualChrootDirectoryEntry : DirectoryEntry {
 				public VirtualChrootDirectoryEntry(string path, FileType nodeHint, bool follow, VirtualChroot chroot)
@@ -788,19 +809,21 @@ namespace Emet.FileSystems {
 			IntPtr handle = IOErrors.InvalidFileHandle;
 			try {
 				try {} finally {
-					handle = NativeMethods.CreateFileW(patharg, access, 7, IntPtr.Zero, (uint)fileMode,
+					handle = NativeMethods.CreateFileW(patharg, access, (uint)(FileShare.ReadWrite | FileShare.Delete), IntPtr.Zero, (uint)fileMode,
 							(forAsyncAccess ? NativeMethods.FILE_FLAG_OVERLAPPED : 0) | (follow ? 0 : NativeMethods.FILE_FLAG_OPEN_REPARSE_POINT),
 							IOErrors.InvalidFileHandle);
 				}
 				if (handle == IOErrors.InvalidFileHandle)
 					throw GetExceptionFromLastError(patharg, path, false, 0, true);
-        int status = NativeMethods.NtQueryInformationFile(handle, out NativeMethods.IO_STATUS_BLOCK sb,
-						out NativeMethods.FILE_BASIC_INFORMATION bi,
-            Marshal.SizeOf<NativeMethods.FILE_BASIC_INFORMATION>(), NativeMethods.FileBasicInformation);
-        if (status != 0) throw GetExceptionFromNtStatus(status, path, false, 0, false);
-				if (!follow && (bi.FileAttributes & NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
-					NativeMethods.SetLastError(IOErrors.OperationNotSupportedOnSymbolicLink& 0xFFFF);
-					throw GetExceptionFromLastError(path, patharg, false, 0, true);
+				if (!follow) {
+					int status = NativeMethods.NtQueryInformationFile(handle, out NativeMethods.IO_STATUS_BLOCK sb,
+							out NativeMethods.FILE_BASIC_INFORMATION bi,
+							Marshal.SizeOf<NativeMethods.FILE_BASIC_INFORMATION>(), NativeMethods.FileBasicInformation);
+					if (status != 0) throw GetExceptionFromNtStatus(status, path, false, 0, false);
+					if ((bi.FileAttributes & NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+						NativeMethods.SetLastError(IOErrors.OperationNotSupportedOnSymbolicLink & 0xFFFF);
+						throw GetExceptionFromLastError(path, patharg, false, 0, true);
+					}
 				}
 				safe = new SafeFileHandle((IntPtr)handle, true);
 				stream = new FileStream(safe, fileAccess, bufferSize, forAsyncAccess);
@@ -827,26 +850,398 @@ namespace Emet.FileSystems {
 		}
 
 		private static SafeFileHandle GetDirectoryHandle(string chkpath, string path, bool forEnumeration, bool follow)
-			=> throw new PlatformNotSupportedException("TODO actually implement virtual chroot on Windows");
+			=> GetDirectoryHandle(chkpath, path, true, forEnumeration, follow);
 
-		public static IDiskVirtualFileSystem VirtualizeChrootDirectory(SafeFileHandle handle)
-			=> throw new PlatformNotSupportedException("TODO actually implement virtual chroot on Windows");
+		private static SafeFileHandle GetDirectoryHandle(string chkpath, string path, bool allowRename, bool forEnumeration, bool follow)
+		{
+			uint access = NativeMethods.FILE_READ_ATTRIBUTES | NativeMethods.SYNCHRONIZE;
+			if (forEnumeration) access |= NativeMethods.FILE_LIST_DIRECTORY;
+			uint flags = NativeMethods.FILE_FLAG_BACKUP_SEMANTICS;
+			uint share = allowRename ? (uint)(FileShare.ReadWrite | FileShare.Delete) : (uint)(FileShare.ReadWrite);
+			if (!follow) flags |= NativeMethods.FILE_FLAG_OPEN_REPARSE_POINT;
+			IntPtr handle = IOErrors.InvalidFileHandle;
+			SafeFileHandle safeHandle = null;
+			SafeFileHandle rtn = null;
+			try {
+				handle = NativeMethods.CreateFileW(chkpath, access, share, IntPtr.Zero, NativeMethods.OPEN_EXISTING, flags, IOErrors.InvalidFileHandle);
+				if (handle == IOErrors.InvalidFileHandle) throw GetExceptionFromLastError(chkpath, path, false, 0, false);
+				safeHandle = new SafeFileHandle(handle, true);
+				handle = IOErrors.InvalidFileHandle;
+				// So the problem is this might not be a directory
+				if (new FileSystemNode(safeHandle).FileType != FileType.Directory)
+					throw GetExceptionFromErrno(IOErrors.IsNotADirectory, chkpath, path,
+							new System.ComponentModel.Win32Exception(IOErrors.IsNotADirectory).Message);
+				rtn = safeHandle;
+				safeHandle = null;
+			} finally {
+				if (safeHandle is null && handle != IOErrors.InvalidFileHandle) NativeMethods.CloseHandle(handle);
+				if (safeHandle is not null) safeHandle.Dispose();
+			}
+			return rtn;
+		}
+
+		private class VirtualChroot : IDiskVirtualFileSystem {
+			public bool SupportsCreationTime => true;
+			public bool SupportsAccessTime => true;
+			public bool SupportsHardLinks => true;
+			public bool SupportsSymbolicLinks => true;
+			public bool SupportsDirectoryHandles => true;
+			public char DirectorySeparatorCharacter => '\\';
+			public char AlternateDirectorySeparatorCharacter => '/';
+			public string CurrentDirectoryName => ".";
+			public string ParentDirectoryName => "..";
+			public string RootDirectoryName => "\\";
+
+			private readonly string root;
+			private readonly SafeFileHandle handle;
+			private readonly IDisposable chain;
+
+			public VirtualChroot(string path, SafeFileHandle directory) { root = path; handle = directory; }
+
+			private VirtualChroot(string path, ref IDisposable parents, ref SafeFileHandle directory) {
+				root = path;
+				chain = parents;
+				handle = directory;
+				parents = null;
+				directory = null;
+			}
+
+			IVirtualFileSystem IVirtualFileSystem.CreateChild(string path) => CreateChild(path);
+			public Stream OpenVirtualFile(string path, FileMode fileMode, FileAccess fileAccess, bool forAsyncAccess = false, int bufferSize = 4096)
+				=> OpenFile(path, fileMode, fileAccess, FileSystem.FollowSymbolicLinks.Always, forAsyncAccess, bufferSize);
+
+			public IDiskVirtualFileSystem CreateChild(string path) => CreateChild(path, FileSystem.FollowSymbolicLinks.Always);
+
+			public IDiskVirtualFileSystem CreateChild(string path, FileSystem.FollowSymbolicLinks followSymbolicLinks)
+			{
+				SafeFileHandle dir = null;
+				IDisposable chain = null;
+				try {
+					chain = Traverse(path, false, followSymbolicLinks == FileSystem.FollowSymbolicLinks.Always, out var finalPath);
+					dir = GetDirectoryHandle(finalPath, path, false, false, false);
+					return new VirtualChroot(finalPath, ref chain, ref dir);
+				} finally {
+					dir?.Dispose();
+					chain?.Dispose();
+				}
+			}
+
+			IDisposable Traverse(string path, bool mkdir, bool traverseFinal, out string finalPath)
+			{
+				HandleChain collective = null;
+				HandleChain rtn = null;
+				try {
+					collective = new HandleChain(handle);
+					string activepath = root;
+					string localpath = path;
+					int lastindex = 0;
+					int linkcount = 0;
+					if (path[0] == '/' || path[0] == '\\') {
+						if (path.Length == 1) { finalPath = root; rtn = collective; collective = null; return rtn; }
+						if (path[1] == '/' || path[1] == '\\')
+							throw new ArgumentException("paths do not contain adjacient directory separator characters");
+						lastindex = 1;
+					}
+					int index = Advance(localpath, lastindex);
+					string component = null;
+					for (;;) {
+						component = localpath.Substring(lastindex, index - lastindex);
+						if (index == localpath.Length && !traverseFinal)
+							break;
+						else if (component == "" || component == ".") {
+							lastindex = index + 1;
+							if (lastindex >= localpath.Length) break;
+							index = Advance(localpath, lastindex);
+						} else if (component == "..") {
+							if (collective.Count > 0) {
+								collective.Pop().Dispose();
+								activepath = Path.GetDirectoryName(activepath);
+								localpath = Path.GetDirectoryName(localpath);
+							}
+							lastindex = index + 1;
+							if (lastindex >= localpath.Length) break;
+							index = Advance(localpath, lastindex);
+						} else {
+							var local2 = Path.Combine(activepath, component);
+							var attr = NativeMethods.GetFileAttributes(local2);
+							if (index == localpath.Length && (attr == NativeMethods.INVALID_FILE_ATTRIBUTES || (attr & NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT) == 0)) break;
+							if (attr == NativeMethods.INVALID_FILE_ATTRIBUTES && mkdir && Marshal.GetLastWin32Error() == (IOErrors.FileNotFound & 0xFFFF)) {
+								if (0 != NativeMethods.CreateDirectory(local2, IntPtr.Zero)) attr = NativeMethods.FILE_ATTRIBUTE_DIRECTORY;
+							}
+							if (attr == NativeMethods.INVALID_FILE_ATTRIBUTES) throw GetExceptionFromLastError(path, path, false, 0, false);
+							if ((attr & NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+								if (++linkcount == 30)
+									throw GetExceptionFromErrno(IOErrors.TooManySymbolicLinks, path, path,
+											new System.ComponentModel.Win32Exception(IOErrors.TooManySymbolicLinks).Message);
+								var path2 = FileSystem.ReadLink(local2);
+								if (IsAbsoluteTextSkip(path2, out path2)) {
+									while (collective.Count > 0) collective.Pop().Dispose();
+									activepath = root;
+								}
+								if (index == localpath.Length)
+									localpath = path2;
+								else if (index == localpath.Length - 1)
+									throw new ArgumentException("paths do not end in directory separator characters");
+								else
+									localpath = Path.Combine(path2, localpath.Substring(index + 1));
+								lastindex = 0;
+								index = Advance(localpath, 0);
+							}
+							else if (index == localpath.Length)
+								break;
+							else if ((attr & NativeMethods.FILE_ATTRIBUTE_DIRECTORY) != 0) {
+								SafeFileHandle h2 = null;
+								try {
+									h2 = GetDirectoryHandle(local2, path, false, false, false);
+									collective.Add(h2);
+									h2 = null;
+								} finally {
+									h2?.Dispose();
+								}
+								lastindex = index + 1;
+								index = Advance(localpath, lastindex);
+								activepath = Path.Combine(activepath, component);
+							} else
+								throw GetExceptionFromErrno(IOErrors.IsNotADirectory, path, path, new System.ComponentModel.Win32Exception(IOErrors.IsNotADirectory & 0xFFFF).Message);
+						}
+					}
+					rtn = collective;
+					collective = null;
+					finalPath = (component is null || component == "." || component == "..") ? activepath
+								 : Path.Combine(activepath, component);
+				} finally {
+					collective?.Dispose();
+				}
+				return rtn;
+			}
+
+			private sealed class HandleChain : List<SafeFileHandle>, IDisposable {
+				public HandleChain(SafeFileHandle root) { this.root = root; root.DangerousAddRef(ref gothandle); }
+				public SafeFileHandle Pop() {
+					SafeFileHandle rtn = this[Count - 1];
+					this.RemoveAt(Count - 1);
+					return rtn;
+				}
+				public void Dispose() {
+					for (int i = Count; i --> 0;)
+						this[i].Dispose();
+					if (gothandle) { gothandle = false; root.DangerousRelease(); }
+				}
+				private SafeFileHandle root;
+				private bool gothandle;
+			}
+
+			private static int Advance(string path, int index)
+			{
+				for (; index < path.Length; index++)
+					if (path[index] == '/' || path[index] == '\\')
+						break;
+				return index;
+			}
+
+			private static bool IsAbsoluteTextSkip(string path, out string relpath) {
+				if (path.Length >= 4 && (path[0] == '\\' || path[0] == '/') && path[1] == '?' && path[2] == '?' && (path[3] == '\\' || path[3] == '/')) {
+					if (path.Length < 7 || path[5] != ':')
+						if (path.StartsWith("\\??\\UNC"))
+							throw new NotSupportedException("Tried to traverse a symbolic link to a network share inside a VirtualChroot jail");
+						else
+							throw new InvalidOperationException("Got a \\??\\ link that does not start with a drive letter");
+					relpath = path.Substring(7);
+				}
+				if (path.Length == 0) { relpath = path; return false; }
+				if (path[0] == '\\' || path[0] == '/') {
+					if (path.Length > 1 && (path[1] == '/' || path[1] == '\\'))
+						throw new NotSupportedException("Tried to traverse a symbolic link to a network share inside a VirtualChroot jail");
+					relpath = path.Substring(1);
+					return true;
+				}
+				if (path.Length > 1 && path[1] == ':') {
+					if (path.Length == 2 || (path[2] != '\\' && path[2] != '/'))
+						throw new NotSupportedException("Tried to traverse a drive letter relative symbolic link");
+					relpath = path.Substring(3);
+					return true;
+				}
+				relpath = path;
+				return false;
+			}
+
+			public bool CreateDirectory(string path)
+			{
+				if (path is null) throw new ArgumentNullException("path");
+				if (path.Length == 0) throw new ArgumentOutOfRangeException("path", "path cannot be the empty string.");
+				using (var traversal = Traverse(path, true, false, out string final)) {
+					if (0 == NativeMethods.CreateDirectory(final, IntPtr.Zero)) {
+						if (Marshal.GetLastWin32Error() == (IOErrors.AlreadyExists & 0xFFFF)) return false;
+						throw GetExceptionFromLastError(final, path, false, 0, true);
+					}
+				}
+				return true;
+			}
+
+			public void CreateHardLink(string targetpath, string linkpath)
+			{
+				if (targetpath is null) throw new ArgumentNullException("targetpath");
+				if (targetpath.Length == 0) throw new ArgumentOutOfRangeException("targetpath", "targetpath must not be the empty string");
+				if (linkpath is null) throw new ArgumentNullException("linkpath");
+				if (linkpath.Length == 0) throw new ArgumentOutOfRangeException("linkpath", "linkpath must not be the empty string");
+				using (var ttarget = Traverse(targetpath, false, true, out var finaltarget)) // Windows resolves through symbolic links (!!)
+				using (var tlink = Traverse(linkpath, false, false, out var finallink))
+					FileSystem.CreateHardLink(finaltarget, finallink);
+			}
+
+			public void CreateSymbolicLink(string targetpath, string linkpath, FileType linkTargetType = FileType.LinkTargetHintNotAvailable)
+			{
+				if (targetpath is null) throw new ArgumentNullException("targetpath");
+				if (targetpath.Length == 0) throw new ArgumentOutOfRangeException("targetpath", "targetpath must not be the empty string");
+				if (linkpath is null) throw new ArgumentNullException("linkpath");
+				if (linkpath.Length == 0) throw new ArgumentOutOfRangeException("linkpath", "linkpath must not be the empty string");
+				if (linkTargetType != FileType.File && linkTargetType != FileType.Directory && linkTargetType != FileType.LinkTargetHintNotAvailable)
+					throw new ArgumentOutOfRangeException("linkTargetType", "link target type must be File, Directory, or Not Available (autodetect)");
+				if (linkTargetType == FileType.LinkTargetHintNotAvailable) {
+					string targetpath2;
+					if (targetpath[0] == '/' || targetpath[0] == '\\') {
+						targetpath2 = targetpath;
+					} else {
+						int offset = linkpath.Length;
+						while (offset > 0 && linkpath[offset - 1] != '/' && linkpath[offset - 1] != '\\') --offset;
+						targetpath2 = linkpath.Substring(0, offset) + targetpath;
+					}
+					using (var traversal2 = Traverse(targetpath2, false, false, out var finaltarget)) {
+						var attr = NativeMethods.GetFileAttributes(finaltarget);
+						if (attr == NativeMethods.INVALID_FILE_ATTRIBUTES)
+							throw GetExceptionFromLastError(finaltarget, targetpath, false, 0, false);
+						linkTargetType = ((attr & NativeMethods.FILE_ATTRIBUTE_DIRECTORY) != 0) ? FileType.Directory : FileType.File;
+					}
+				}
+				using (var traversal = Traverse(linkpath, false, false, out var finallink))
+					FileSystem.CreateSymbolicLink(targetpath, finallink, linkTargetType);
+			}
+
+			public DirectoryEntry GetDirectoryEntry(string path)
+			{
+				if (path is null) throw new ArgumentNullException("path");
+				if (path.Length == 0) throw new ArgumentOutOfRangeException("path", "path cannot be the empty string.");
+				return new VirtualChrootDirectoryEntry(this, path, false);
+			}
+
+			public IEnumerable<DirectoryEntry>? GetDirectoryContents(string path, FileSystem.NonExtantDirectoryBehavior nonExtantDirectoryBehavior)
+			{
+				if (path is null) throw new ArgumentNullException("path");
+				if (path.Length == 0) throw new ArgumentOutOfRangeException("path", "path cannot be the empty string.");
+				using (var traversal = Traverse(path, false, true, out var final))
+				{
+					var slist = FileSystem.GetDirectoryContents(final, nonExtantDirectoryBehavior);
+					if (slist is null) return null;
+					var rtn = new FileSystem.DirectoryEntryList();
+					foreach (var entry in slist)
+						rtn.Add(new VirtualChrootDirectoryEntry(this, Path.Combine(path, entry.Name), entry));
+					return rtn;
+				}
+			}
+
+			public SafeFileHandle OpenDirectory(string path, FileSystem.FollowSymbolicLinks followSymbolicLinks, bool requestEnumeration = false)
+			{
+				if (path is null) throw new ArgumentNullException("path");
+				if (path.Length == 0) throw new ArgumentOutOfRangeException("path", "path cannot be the empty string.");
+				using (var traversal = Traverse(path, false, followSymbolicLinks == FileSystem.FollowSymbolicLinks.Always, out var final))
+					return GetDirectoryHandle(final, path, requestEnumeration, false);
+			}
+
+			public FileStream OpenFile(string path, FileMode fileMode, FileAccess fileAccess, FileSystem.FollowSymbolicLinks followSymbolicLinks, bool forAsyncAccess = false, int bufferSize = 4096)
+			{
+				if (path is null) throw new ArgumentNullException("path");
+				if (path.Length == 0) throw new ArgumentOutOfRangeException("path", "path cannot be the empty string.");
+				using (var traversal = Traverse(path, false, followSymbolicLinks != FileSystem.FollowSymbolicLinks.Never, out string final))
+					return OpenFileStream(final, path, fileMode, fileAccess, false, forAsyncAccess, bufferSize);
+			}
+
+			public void RenameReplace(string oldname, string newname)
+			{
+				if (oldname is null) throw new ArgumentNullException("oldname");
+				if (oldname.Length == 0) throw new ArgumentOutOfRangeException("oldname cannot be the empty string");
+				if (newname is null) throw new ArgumentNullException("newname");
+				if (newname.Length == 0) throw new ArgumentOutOfRangeException("newname cannot be the empty string");
+				using (var traverseold = Traverse(oldname, false, false, out string finalold))
+				using (var traversenew = Traverse(newname, false, false, out string finalnew))
+					FileSystem.RenameReplace(finalold, finalnew);
+			}
+
+			public string ReadLink(string path)
+			{
+				if (path is null) throw new ArgumentNullException("path");
+				if (path.Length == 0) throw new ArgumentOutOfRangeException("path", "path cannot be the empty string.");
+				using (var traversal = Traverse(path, false, false, out string final))
+					return FileSystem.ReadLink(final);
+			}
+
+			public bool RemoveFile(string path)
+			{
+				if (path is null) throw new ArgumentNullException("path");
+				if (path.Length == 0) throw new ArgumentOutOfRangeException("path", "path cannot be the empty string.");
+				using (var traversal = Traverse(path, false, false, out string final))
+					return FileSystem.RemoveFile(final);
+			}
+
+			public bool RemoveDirectory(string path, bool recurse = false)
+			{
+				if (path is null) throw new ArgumentNullException("path");
+				if (path.Length == 0) throw new ArgumentOutOfRangeException("path", "path cannot be the empty string.");
+				using (var traversal = Traverse(path, false, false, out string final))
+					return FileSystem.RemoveDirectory(final, recurse); // Attempting to remove \ will fail with in use.
+			}
+
+			public void Dispose() { handle.Dispose(); chain?.Dispose(); }
+
+			private sealed class VirtualChrootDirectoryEntry : DirectoryEntry {
+				public VirtualChrootDirectoryEntry(VirtualChroot owner, string path, bool follow)
+					: base(path, follow ? FileSystem.FollowSymbolicLinks.Always : FileSystem.FollowSymbolicLinks.Never)
+				{
+					this.owner = owner;
+				}
+
+				internal VirtualChrootDirectoryEntry(VirtualChroot owner, string path, DirectoryEntry source)
+					: base(path, FileSystem.FollowSymbolicLinks.Never)
+				{
+					this.owner = owner;
+					FillFindDataResult(source);
+					SetLinkTargetHint(source.LinkTargetHint);
+				}
+
+				protected override DirectoryEntry _ResolveSymbolicLink() => new VirtualChrootDirectoryEntry(owner, Path, true);
+
+				protected override void _Refresh()
+				{
+					try {
+						using (var traversal = owner.Traverse(Path, false, FollowSymbolicLinks == FileSystem.FollowSymbolicLinks.Always, out string final))
+						{
+							var source = new DirectoryEntry(final, FileSystem.FollowSymbolicLinks.Never);
+							if (source.ErrorCode == 0) {
+								RefreshSucceeded(source.FileType, source.FileSize, source.BytesUsed, source.DeviceNumber, source.InodeNumber, source.LinkCount,
+									source.CreationTimeUTC, source.LastModificationTimeUTC, source.LastChangeTimeUTC, source.LastAccessTimeUTC);
+								SetLinkTargetHint(source.LinkTargetHint);
+							} else {
+								RefreshFailed(source.ErrorCode);
+							}
+						}
+					} catch (IOException ex) when (!ShouldThrowExceptionForRefreshError(ex.HResult))
+					{
+						RefreshFailed(ex.HResult);
+					}
+				}
+
+				private VirtualChroot owner;
+			}
+		}
 
 #else
 		// Must be reference assembly
-		private static string MakeAbsolte(string path) => throw null;
+		private static string MakeAbsolute(string path) => throw null;
 
 		///<summary>Creates a virtual file system that is the system from here</summary>
 		///<returns>a virtualization of the given directory</returns>
 		///<exception cref="System.IO.DirectoryNotFoundException">The requested path does not exist</exception>
 		///<exception cref="System.IO.IOException">an error occurred opening the path</exception>
 		public static IDiskVirtualFileSystem VirtualizeChrootDirectory(string path) => throw null;
-
-		///<summary>Creates a virtual file system that is the system from here</summary>
-		///<returns>a virtualization of the given directory</returns>
-		///<exception cref="System.IO.DirectoryNotFoundException">The requested path does not exist</exception>
-		///<exception cref="System.IO.IOException">an error occurred opening the path</exception>
-		public static IDiskVirtualFileSystem VirtualizeChrootDirectory(SafeFileHandle handle) => throw null;
 #endif
 	}
 }

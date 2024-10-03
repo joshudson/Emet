@@ -268,6 +268,7 @@ namespace Emet.FileSystems {
 		internal const uint FILE_TRAVERSE = 32;
 		internal const uint FILE_ATTRIBUTE_DIRECTORY = 16;
 		internal const uint FILE_ATTRIBUTE_REPARSE_POINT = 1024;
+		internal const uint INVALID_FILE_ATTRIBUTES = 0xFFFFFFFF;
 		internal const uint FILE_READ_ATTRIBUTES = 128;
 		internal const uint FILE_READ_DATA = 1;
 		internal const uint FILE_WRITE_DATA = 2;
@@ -281,6 +282,7 @@ namespace Emet.FileSystems {
 		internal const uint SYMBOLIC_LINK_FLAG_DIRECTORY = 1;
 		internal const uint SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE = 2;
 		internal const uint FSCTL_GET_REPARSE_POINT = 589992;
+		//internal const uint FSCTL_SET_REPARSE_POINT = 589988;
 		internal const uint OBJ_CASE_INSENSITIVE = 0x00000040;
 
 		internal const uint FileDirectoryInformation = 1;
@@ -463,6 +465,9 @@ namespace Emet.FileSystems {
 
 		[DllImport("kernel32.dll", SetLastError=true)]
 		internal static extern byte CreateDirectory(string pathname, IntPtr lpSecurityAttributes);
+
+		[DllImport("kernel32.dll", SetLastError=true)]
+		internal static extern uint GetFileAttributes(string pathname);
 
 		// Used for deleting a file; deletepending is 4 bytes long despite only 1 byte used, so we must give it a 4 byte aligned pointer.
 		[DllImport("kernel32.dll", SetLastError=true)]

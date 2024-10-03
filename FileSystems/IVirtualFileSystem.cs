@@ -94,9 +94,11 @@ namespace Emet.FileSystems {
 		///<exception cref="System.IO.DirectoryNotFoundException">the path was not found</exception>
 		///<exception cref="System.IO.IOException">an error occurred</exception>
 		///<exception cref="System.InvalidOperationException">A system constraint was found to be violated while descending the directory tree</exception>
+		///<remarks>If you are using this in a security sensitive context; beware. Windows has a platform-level
+		///unremovable race where the targetpath can be swapped out from under you to a symbolic link pointing outside the jail.</remarks>
 		void CreateHardLink(string targetpath, string linkpath);
 
-		///<summary>Creates a hard link</summary>
+		///<summary>Creates a symbolic link</summary>
 		///<param name="targetpath">The path to the node that shall be accessed, relative to the symbolic link</param>
 		///<param name="linkpath">The path the node shall be known as</param>
 		///<param name="linkTargetType">What kind of symbolic link to create</param>

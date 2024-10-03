@@ -88,7 +88,7 @@ namespace Emet.FileSystems {
 #endif
 
 #if OSTYPE_UNIX
-    internal static DateTime UnixTimeToDateTime(long seconds, ulong nanoseconds)
+		internal static DateTime UnixTimeToDateTime(long seconds, ulong nanoseconds)
 			=> NativeMethods.Epoch.AddTicks(
 					unchecked(seconds * TimeSpan.TicksPerSecond + (long)(nanoseconds / 100)));
 

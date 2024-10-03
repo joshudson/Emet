@@ -180,6 +180,18 @@ namespace Emet.FileSystems {
 			loaded2 = false;
 		}
 
+		internal void FillFindDataResult(FileSystemNode other)
+		{
+			errorCode = 0;
+			fileType = other.fileType;
+			fileSize = other.fileSize;
+			birthTime = other.birthTime;
+			lastAccessTime = other.lastAccessTime;
+			lastModificationTime = other.lastModificationTime;
+			loaded = true;
+			loaded2 = false;
+		}
+
 		internal static FileType FileAttributesToFileType(uint dwFileAttributes, uint dwReserved0)
 		{
 			if ((dwFileAttributes & NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT) != 0)
@@ -268,7 +280,7 @@ namespace Emet.FileSystems {
 
 		private SafeFileHandle reference;
 		private int errorCode;
-		private FileType fileType;
+		protected internal FileType fileType;
 		private long fileSize;
 		private long bytesUsed;
 		private long deviceNumber;
@@ -301,6 +313,7 @@ namespace Emet.FileSystems {
 		protected void RefreshSucceeded(FileType fileType, long fileSize, long bytesUsed, long deviceNumber, long inodeNumber, long links,
 			DateTime creationTime, DateTime lastModificationTime, DateTime lastChangeTime, DateTime lastAccessTime)
 		{
+			if (fileType == FileType.NodeHintNotAvailable) throw new ArgumentOutOfRangeException("fileType", "FileType must not be NodeHintNotAvailable by this point.");
 			this.errorCode = 0;
 			this.loaded = true;
 #if OS_WIN
@@ -320,6 +333,11 @@ namespace Emet.FileSystems {
 
 		///<summary>When implementing _Refresh within IVirtualFileSystem; checks if _Refresh should throw or call RefreshFailed()</summary>
 		///<param name="errorCode">The error code from the remote system (already translated)</param>
+		///<remarks>It is not necessary to determine whether errorCode should be FileNotFound or DirectoryNotFound should the underlying not distinguish as both result in false; however RefreshFailed technically cares on Windows</remarks>
+		protected static bool ShouldThrowExceptionForRefreshError(int errorCode) => !IsPassError(errorCode, 0, false);
+
+		///<summary>When implementing _Refresh within IVirtualFileSystem; checks if _Refresh should throw or call RefreshFailed()</summary>
+		///<param name="errorCode">The error code from the remote system (already translated)</param>
 		///<param name="exception">the generated exception, if any</param>
 		///<remarks>It is not necessary to determine whether errorCode should be FileNotFound or DirectoryNotFound should the underlying not distinguish as both result in false; however RefreshFailed technically cares on Windows</remarks>
 		protected bool ShouldThrowExceptionForRefreshError(int errorCode, [NotNullWhen(true)] out IOException? exception)
@@ -335,10 +353,10 @@ namespace Emet.FileSystems {
 		///<summary>Returns the error code from stat() or the moral equivalent</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
 		///<remarks>Returns IOErrors.Success if the node exists</remarks>
-		public int ErrorCode { get { if (!loaded) _Refresh(); return errorCode; } }
+		public int ErrorCode { get { if (!loaded && errorCode == 0) _Refresh(); return errorCode; } }
 		///<summary>Returns the type of the file system node</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
-		public virtual FileType FileType { get { if (!loaded) _Refresh(); return fileType; } }
+		public virtual FileType FileType { get { if (fileType == FileType.NodeHintNotAvailable) _Refresh(); return fileType; } }
 		///<summary>Returns the number of hard links to this file</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
 #if OS_WIN
