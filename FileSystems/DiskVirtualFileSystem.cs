@@ -1,6 +1,8 @@
 /* vi:ts=2
  */
 
+#if VIRTUAL_FS
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -1245,3 +1247,5 @@ namespace Emet.FileSystems {
 #endif
 	}
 }
+
+#endif
