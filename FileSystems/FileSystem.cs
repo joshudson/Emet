@@ -194,7 +194,7 @@ namespace Emet.FileSystems {
 				if (ex.HResult == IOErrors.NoSuchSystemCall || ex.HResult == IOErrors.SocketOperationNotSupported)
 					ex = GetExceptionFromErrno(IOErrors.NoSuchSystemCall, targetpath, targetpath, "File system does not support hard links.");
 #if OS_LINUXX64
-				else if (ex.HResult == IOErrors.PermissionDenied) {
+				else if (ex.HResult == IOErrors.PrivilegeNotHeld) {
 					int n = blinkpath.Length;
 					while (n-- > 0 && blinkpath[n] != '/')
 						;
@@ -262,7 +262,7 @@ namespace Emet.FileSystems {
 				if (ex.HResult == IOErrors.NoSuchSystemCall || ex.HResult == IOErrors.SocketOperationNotSupported)
 					ex = GetExceptionFromErrno(IOErrors.NoSuchSystemCall, linkpath, linkpath, "File system does not support symbolic links.");
 #if OS_LINUXX64
-				else if (ex.HResult == IOErrors.PermissionDenied)
+				else if (ex.HResult == IOErrors.PrivilegeNotHeld)
 #else
 				else if (blinkpath.Length > 1)
 #endif

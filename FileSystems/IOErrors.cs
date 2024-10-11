@@ -11,7 +11,7 @@ namespace Emet.FileSystems {
 		///<summary>Oops; got an error but we don't know what it was</summary>
 		public static readonly int Success = 0;
 #if OSTYPE_UNIX
-		public static readonly int PermissionDenied = 1;
+		public static readonly int PrivilegeNotHeld = 1;
 		public static readonly int FileNotFound = 2;
 		public static readonly int PathNotFound = 0xFFFE;
 		public static readonly int Interrupted = 4;
@@ -25,6 +25,7 @@ namespace Emet.FileSystems {
 		public static readonly int NoSuchHandle = 7;
 		public static readonly int WouldBlock = 11;
 		public static readonly int OutOfMemory = 12;
+		public static readonly int PermissionDenied = 13;
 		public static readonly int NoSuchMemoryAddress = 14;
 		public static readonly int FileIsLocked = 16;
 		public static readonly int FileExists = 17;
@@ -119,6 +120,7 @@ namespace Emet.FileSystems {
 		public static readonly int DiskTooFragmented = 0xFFFE;
 		public static readonly int DeletePending = 0xFFFE;
 #elif OS_WIN
+		public static readonly int PrivilegeNotHeld = unchecked((int)0x80070522);
 		public static readonly int PermissionDenied = unchecked((int)0x80070005);
 		public static readonly int FileNotFound = unchecked((int)0x80070002);
 		public static readonly int PathNotFound = unchecked((int)0x80070003);
@@ -197,8 +199,8 @@ namespace Emet.FileSystems {
 		internal static readonly int InsufficientBuffer = unchecked((int)0x8007007A);
 #else
 	/* ref */
-		///<summary>You don't have permission to do this</summary>
-		public static readonly int PermissionDenied = 1;
+		///<summary>This is a privileged operation and the caller isn't holding the necessary privilege</summary>
+		public static readonly int PrivilegeNotHeld = 1;
 		///<summary>The file was not found; also check PathNotFound if you check this</summary>
 		public static readonly int FileNotFound = 2;
 		///<summary>The path was not found; also check FileNotFound if you check this</summary>
@@ -228,6 +230,8 @@ namespace Emet.FileSystems {
 		public static readonly int WouldBlock = 11;
 		///<summary>Ran out of memory (usually kernel memory)</summary>
 		public static readonly int OutOfMemory = 12;
+		///<summary>You don't have permission to do this</summary>
+		public static readonly int PermissionDenied = 13;
 		///<summary>Oh noes! That memory address wasn't mapped.</summary>
 		public static readonly int NoSuchMemoryAddress = 14;
 		///<summary>File is locked</summary>
