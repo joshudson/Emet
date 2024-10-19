@@ -195,7 +195,7 @@ namespace Emet.FileSystems {
 		internal static FileType FileAttributesToFileType(uint dwFileAttributes, uint dwReserved0)
 		{
 			if ((dwFileAttributes & NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT) != 0)
-				return dwReserved0 == 0xA000000C ? FileType.SymbolicLink : FileType.ReparsePoint;
+				return dwReserved0 == NativeMethods.IO_REPARSE_TAG_SYMBOLIC_LINK ? FileType.SymbolicLink : FileType.ReparsePoint;
 			else if ((dwFileAttributes & NativeMethods.FILE_ATTRIBUTE_DIRECTORY) != 0)
 				return FileType.Directory;
 			else
@@ -264,10 +264,10 @@ namespace Emet.FileSystems {
 					try {
 						gch = GCHandle.Alloc(results, GCHandleType.Pinned);
 						var symdata = Marshal.PtrToStructure<NativeMethods.REPARSE_DATA_BUFFER_SYMLINK>(gch.AddrOfPinnedObject());
-						if (symdata.ReparseTag == 0xA000000C)
+						if (symdata.ReparseTag == NativeMethods.IO_REPARSE_TAG_SYMBOLIC_LINK)
 							fileType = FileType.SymbolicLink;
 					} finally {
-						gch.Free();
+						if (gch.IsAllocated) gch.Free();
 					}
 					break;
 				}

@@ -284,6 +284,8 @@ namespace Emet.FileSystems {
 		internal const uint FSCTL_GET_REPARSE_POINT = 589992;
 		//internal const uint FSCTL_SET_REPARSE_POINT = 589988;
 		internal const uint OBJ_CASE_INSENSITIVE = 0x00000040;
+		internal const uint IO_REPARSE_TAG_SYMBOLIC_LINK = 0xA000000C;
+		internal const uint IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003;
 
 		internal const uint FileDirectoryInformation = 1;
 		internal const uint FILE_DIRECTORY_FILE = 1;

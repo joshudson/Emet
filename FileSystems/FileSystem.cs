@@ -321,6 +321,8 @@ namespace Emet.FileSystems {
 		///<summary>Gets the link target text of a path</summary>
 		///<param name="path">The path to the symbolic link to read</param>
 		///<exception cref="System.IO.IOException">An IO error occurred</exception>
+		///<exception cref="System.NotSupportedException">The platform is Windows and the target of ReadLink is a reparse point
+    ///that is neither a symbolic link nor a junction</exception>
 		public static string ReadLink(string path)
 		{
 			if (path is null) throw new ArgumentNullException("path");
@@ -368,15 +370,18 @@ namespace Emet.FileSystems {
 					try {
 						gch = GCHandle.Alloc(results, GCHandleType.Pinned);
 						var symdata = Marshal.PtrToStructure<NativeMethods.REPARSE_DATA_BUFFER_SYMLINK>(gch.AddrOfPinnedObject());
-						if (symdata.ReparseTag != 0xA000000C)
-							throw new NotImplementedException("This is a reparse point, not a symbolic link.");
-						uint bufwanted = hdrsize + (uint)((symdata.PrintNameOffset + symdata.PrintNameLength) << 1);
+						uint hdroffset = hdrsize;
+						if (symdata.ReparseTag == NativeMethods.IO_REPARSE_TAG_MOUNT_POINT)
+							hdroffset -= 4;
+						else if (symdata.ReparseTag != NativeMethods.IO_REPARSE_TAG_SYMBOLIC_LINK)
+							throw new NotSupportedException("ReadLink only works on symbolic links and junctions");
+						uint bufwanted = hdroffset + (uint)((symdata.PrintNameOffset + symdata.PrintNameLength) << 1);
 						if (bufwanted <= buflen)
 							return Marshal.PtrToStringUni(gch.AddrOfPinnedObject() + (int)hdrsize + (int)(symdata.PrintNameOffset << 1),
 								symdata.PrintNameLength >> 1);
 						buflen = bufwanted;
 					} finally {
-						gch.Free();
+						if (gch.IsAllocated) gch.Free();
 					}
 				}
 			} finally {

@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <PropertyGroup>
+    <DefineConstants>VIRTUAL_FS</DefineConstants> <!-- VFS enabled during testing to increase test coverage of shipping code -->
     <DefineConstants Condition="'$(RuntimeIdentifier)' == 'win'">$(DefineConstants);OS_WIN</DefineConstants>
     <DefineConstants Condition="'$(RuntimeIdentifier)' == 'win7-x86'">$(DefineConstants);OS_WIN</DefineConstants>
     <DefineConstants Condition="'$(RuntimeIdentifier)' == 'win7-x64'">$(DefineConstants);OS_WIN</DefineConstants>
