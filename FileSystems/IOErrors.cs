@@ -8,6 +8,8 @@ namespace Emet.FileSystems {
 	public static class IOErrors {
 		///<summary>Contains a file handle that cannot occur for use as a sentinal value</summary>
 		public static readonly IntPtr InvalidFileHandle = new IntPtr(-1);
+		///<summary>Bogus inode number returned by some advanced Windows filesystems; propagates across network filesystems so all platforms can see it</summary>
+		public static readonly long InodeNumberNotAvailable = -1;
 		///<summary>Oops; got an error but we don't know what it was</summary>
 		public static readonly int Success = 0;
 #if OSTYPE_UNIX

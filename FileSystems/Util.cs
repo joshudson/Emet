@@ -120,7 +120,7 @@ namespace Emet.FileSystems {
 		internal static byte[] NameToByteArrayExact(string path)
 		{
 			var count = Encoding.UTF8.GetByteCount(path);
-			if (count > 255) throw GetExceptionFromErrno(IOErrors.BadPathName, path, path, new Win32Exception(IOErrors.BadPathName).Message);
+			if (count > 255) throw GetExceptionFromHResult(IOErrors.BadPathName, path, path);
 			var bytes = new byte[count];
 			Encoding.UTF8.GetBytes(path, 0, path.Length, bytes, 0);
 			for (int i = 0; i < count; i++)
@@ -178,8 +178,7 @@ namespace Emet.FileSystems {
 			int errno = Marshal.GetLastWin32Error();
 			if (errno == IOErrors.Interrupted) { exception = null; return true; }
 			if (canpass && IsPassError(errno, keep, writing)) { exception = null; return false; }
-			var ci = new Win32Exception();
-			exception = GetExceptionFromErrno(errno, chkpath, path, ci.Message);
+			exception = GetExceptionFromHResult(errno, chkpath, path);
 			return false;
 		}
 
@@ -219,8 +218,7 @@ namespace Emet.FileSystems {
 			errno |= unchecked((int)0x80070000);
 #endif
 			if (canpass && IsPassError(errno, keep, writing)) return null;
-			var ci = new Win32Exception();
-			return GetExceptionFromErrno(errno, chkpath, path, ci.Message);
+			return GetExceptionFromHResult(errno, chkpath, path);
 		}
 
 		internal static IOException GetExceptionFromLastError(Func<string> path, bool canpass, int keep, bool writing)
@@ -231,9 +229,18 @@ namespace Emet.FileSystems {
 			errno |= unchecked((int)0x80070000);
 #endif
 			if (canpass && IsPassError(errno, keep, writing)) return null;
-			var ci = new Win32Exception();
 			var path2 = path?.Invoke();
-			return GetExceptionFromErrno(errno, path2, path2, ci.Message);
+			return GetExceptionFromHResult(errno, path2, path2);
+		}
+
+		internal static IOException GetExceptionFromHResult(int hresult, string chkpath, string path)
+		{
+#if OS_WIN
+			var ci = new Win32Exception(hresult & 0xFFFF);
+#else
+			var ci = new Win32Exception(hresult);
+#endif
+			return GetExceptionFromErrno(hresult, chkpath, path, ci.Message);
 		}
 
 		internal static IOException GetExceptionFromErrno(int errno, string chkpath, string path, string cimsg)

@@ -110,6 +110,7 @@ namespace Emet.FileSystems {
 
 		internal void Clear()
 		{
+			deviceNumberPoison = 0;
 			deviceNumber = 0;
 			inodeNumber = 0;
 			fileType = FileType.DoesNotExist;
@@ -213,14 +214,13 @@ namespace Emet.FileSystems {
 			var io = new NativeMethods.IO_STATUS_BLOCK();
 			var volume = new NativeMethods.FILE_FS_VOLUME_INFORMATION();
 			var all = new NativeMethods.FILE_ALL_INFORMATION();
-			int errno;
-			errno = NativeMethods.NtQueryVolumeInformationFile(handle, out io, out volume,
+			var verrno = NativeMethods.NtQueryVolumeInformationFile(handle, out io, out volume,
 					Marshal.SizeOf<NativeMethods.FILE_FS_VOLUME_INFORMATION>(), NativeMethods.FileFsVolumeInformation);
-			if (errno != 0) errno = NativeMethods.RtlNtStatusToDosError(errno);
-			if (errno != 0 && errno != (IOErrors.InsufficientBuffer & 0xFFFF) && errno != IOErrors.ERROR_MORE_DATA) {
-				NativeMethods.SetLastError(errno);
-				throw GetExceptionFromLastError(ErrorPath, ErrorPath, false, 0, false);
+			if (verrno != 0) {
+				verrno = NativeMethods.RtlNtStatusToDosError(verrno);
+				if (verrno == (IOErrors.InsufficientBuffer & 0xFFFF) || verrno == IOErrors.ERROR_MORE_DATA) verrno = 0;
 			}
+			int errno;
 			errno = NativeMethods.NtQueryInformationFile(handle, out io, out all,
 					Marshal.SizeOf<NativeMethods.FILE_ALL_INFORMATION>(), NativeMethods.FileAllInformation);
 			if (errno != 0 && errno != unchecked((int)0x80000005) || all.InternalInformation.file_index == 0)
@@ -246,6 +246,7 @@ namespace Emet.FileSystems {
 			links = (long)all.StandardInformation.NumberOfLinks;
 			inodeNumber = unchecked((long)all.InternalInformation.file_index);
 			deviceNumber = volume.VolumeSerialNumber;
+			deviceNumberPoison = verrno;
 			if (fileType == FileType.ReparsePoint) {
 				uint buflen = 1024;
 				uint hdrsize = (uint)Marshal.SizeOf<NativeMethods.REPARSE_DATA_BUFFER_SYMLINK>();
@@ -290,6 +291,7 @@ namespace Emet.FileSystems {
 		private DateTime lastModificationTime;
 		private DateTime lastChangeTime;
 		private DateTime birthTime;
+		private int deviceNumberPoison;
 		private bool loaded;
 #if OS_WIN
 		private bool loaded2;
@@ -303,6 +305,7 @@ namespace Emet.FileSystems {
 		///<param name="fileType">the type of the file node</param>
 		///<param name="fileSize">the size of the file node</param>
 		///<param name="bytesUsed">the size of the file node on disk</param>
+		///<param name="deviceNumberError">the error retrieving the proxy device number, or 0 for success</param>
 		///<param name="deviceNumber">the proxy device number</param>
 		///<param name="inodeNumber">the remote inode number</param>
 		///<param name="links">the number of links to the file</param>
@@ -310,7 +313,7 @@ namespace Emet.FileSystems {
 		///<param name="lastModificationTime">the date and time in UTC the file was last modified</param>
 		///<param name="lastChangeTime">the date and time in UTC the file node was last changed; pass lastModificationTime if unavailable</param>
 		///<param name="lastAccessTime">the date and time in UTC the file node was last accessed; pass lastModificationTime if unavailable</param>
-		protected void RefreshSucceeded(FileType fileType, long fileSize, long bytesUsed, long deviceNumber, long inodeNumber, long links,
+		protected void RefreshSucceeded(FileType fileType, long fileSize, long bytesUsed, int deviceNumberError, long deviceNumber, long inodeNumber, long links,
 			DateTime creationTime, DateTime lastModificationTime, DateTime lastChangeTime, DateTime lastAccessTime)
 		{
 			if (fileType == FileType.NodeHintNotAvailable) throw new ArgumentOutOfRangeException("fileType", "FileType must not be NodeHintNotAvailable by this point.");
@@ -322,6 +325,7 @@ namespace Emet.FileSystems {
 			this.fileType = fileType;
 			this.fileSize = fileSize;
 			this.bytesUsed = bytesUsed;
+			this.deviceNumberPoison = deviceNumberError;
 			this.deviceNumber = deviceNumber;
 			this.inodeNumber = inodeNumber;
 			this.links = links;
@@ -350,12 +354,17 @@ namespace Emet.FileSystems {
 			return true;
 		}
 
+		///<summary>Gets the error that would occur if retrieving the device number</summary>
+		///<remarks>This property exists for proxying FileSystemNode;
+		///most likely you want to just access the property otherwise and catch the rare case exception</remarks>
+		public int ErrorCodeForDeviceNumber { get { int e = ErrorCode; if (e != 0) return e; return deviceNumberPoison; } }
 		///<summary>Returns the error code from stat() or the moral equivalent</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
 		///<remarks>Returns IOErrors.Success if the node exists</remarks>
 		public int ErrorCode { get { if (!loaded && errorCode == 0) _Refresh(); return errorCode; } }
 		///<summary>Returns the type of the file system node</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
+		///<remarks>If this returns DoesNotExist, check ErrorCode to find out why</remarks>
 		public virtual FileType FileType { get { if (fileType == FileType.NodeHintNotAvailable) _Refresh(); return fileType; } }
 		///<summary>Returns the number of hard links to this file</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
@@ -367,15 +376,20 @@ namespace Emet.FileSystems {
 		public long LinkCount => throw null;
 #endif
 		///<summary>Returns the identifier of the device the file is on</summary>
-		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
-		///<remarks>If this returns DoesNotExist, check ErrorCode to find out why</remarks>
+		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node, or the device number could not be retrieved</exception>
+		///<remarks>Some network filesystems do not provide device numbers and raise an error instead; the error is thrown from here in that case</exception>
+		public long DeviceNumber { get {
 #if OS_WIN
-		public long DeviceNumber { get { if (!loaded2) _Refresh(); return deviceNumber; } }
+				if (!loaded2) _Refresh();
 #elif OSTYPE_UNIX
-		public long DeviceNumber { get { if (!loaded) _Refresh(); return deviceNumber; } }
-#else
-		public long DeviceNumber => throw null;
+				if (!loaded) _Refresh();
 #endif
+#if OS_WIN || OSTYPE_UNIX
+				if (deviceNumberPoison != 0) throw GetExceptionFromHResult(deviceNumberPoison, "", ErrorPath); return deviceNumber;
+#else
+				throw null;
+#endif
+		} }
 		///<summary>Returns the identifier of the file on its device</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node</exception>
 		///<remarks>Symbolic links on Windows like to return the inode number of the backing file from the Native API calls; a platform check only helps for local filesystems</remarks>

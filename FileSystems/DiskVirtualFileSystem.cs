@@ -340,7 +340,7 @@ namespace Emet.FileSystems {
 				if (exception is not null) throw exception;
 				safe = new SafeFileHandle((IntPtr)handle, true);
 				if (new FileSystemNode(safe).FileType == FileType.Directory)
-					throw GetExceptionFromErrno(IOErrors.IsADirectory, chkpath, path, new System.ComponentModel.Win32Exception(IOErrors.IsADirectory).Message);
+					throw GetExceptionFromHResult(IOErrors.IsADirectory, chkpath, path);
 				stream = new FileStream(safe, fileAccess, bufferSize, forAsyncAccess);
 			} finally {
 				if (safe is null && handle >= 0) NativeMethods.close(handle);
@@ -470,8 +470,7 @@ namespace Emet.FileSystems {
 							(finalPath[prefixlen + i], finalPath[prefixlen + offset - i - 1]) = (finalPath[prefixlen + offset - i - 1], finalPath[prefixlen + i]);
 						finalPath[prefixlen + offset++] = (byte)'/';
 						if (nextIndex - index > 255)
-								throw GetExceptionFromErrno(IOErrors.BadPathName, path, path,
-										new System.ComponentModel.Win32Exception(IOErrors.BadPathName).Message);
+								throw GetExceptionFromHResult(IOErrors.BadPathName, path, path);
 						Array.Copy(activepath, index, finalPath, prefixlen + offset, nextIndex - index);
 						finalPath[prefixlen + offset + nextIndex - index] = 0;
 
@@ -503,8 +502,7 @@ namespace Emet.FileSystems {
 							}
 							if (n > 0) {
 								if (++counter == 30)
-									throw GetExceptionFromErrno(IOErrors.TooManySymbolicLinks, path, path,
-											new System.ComponentModel.Win32Exception(IOErrors.TooManySymbolicLinks).Message);
+									throw GetExceptionFromHResult(IOErrors.TooManySymbolicLinks, path, path);
 								if (n < buffer.Length) buffer[n] = 0;	// Buffer is reused; omitting this is an extremely subtle bug
 								int boffset = 0;
 								if (buffer[0] == '/') {
@@ -871,8 +869,7 @@ namespace Emet.FileSystems {
 				handle = IOErrors.InvalidFileHandle;
 				// So the problem is this might not be a directory
 				if (new FileSystemNode(safeHandle).FileType != FileType.Directory)
-					throw GetExceptionFromErrno(IOErrors.IsNotADirectory, chkpath, path,
-							new System.ComponentModel.Win32Exception(IOErrors.IsNotADirectory).Message);
+					throw GetExceptionFromHResult(IOErrors.IsNotADirectory, chkpath, path);
 				rtn = safeHandle;
 				safeHandle = null;
 			} finally {
@@ -973,8 +970,7 @@ namespace Emet.FileSystems {
 							if (attr == NativeMethods.INVALID_FILE_ATTRIBUTES) throw GetExceptionFromLastError(path, path, false, 0, false);
 							if ((attr & NativeMethods.FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
 								if (++linkcount == 30)
-									throw GetExceptionFromErrno(IOErrors.TooManySymbolicLinks, path, path,
-											new System.ComponentModel.Win32Exception(IOErrors.TooManySymbolicLinks).Message);
+									throw GetExceptionFromHResult(IOErrors.TooManySymbolicLinks, path, path);
 								var path2 = FileSystem.ReadLink(local2);
 								if (IsAbsoluteTextSkip(path2, out path2)) {
 									while (collective.Count > 0) collective.Pop().Dispose();
@@ -1004,7 +1000,7 @@ namespace Emet.FileSystems {
 								index = Advance(localpath, lastindex);
 								activepath = Path.Combine(activepath, component);
 							} else
-								throw GetExceptionFromErrno(IOErrors.IsNotADirectory, path, path, new System.ComponentModel.Win32Exception(IOErrors.IsNotADirectory & 0xFFFF).Message);
+								throw GetExceptionFromHResult(IOErrors.IsNotADirectory, path, path);
 						}
 					}
 					rtn = collective;
@@ -1218,8 +1214,10 @@ namespace Emet.FileSystems {
 						{
 							var source = new DirectoryEntry(final, FileSystem.FollowSymbolicLinks.Never);
 							if (source.ErrorCode == 0) {
-								RefreshSucceeded(source.FileType, source.FileSize, source.BytesUsed, source.DeviceNumber, source.InodeNumber, source.LinkCount,
-									source.CreationTimeUTC, source.LastModificationTimeUTC, source.LastChangeTimeUTC, source.LastAccessTimeUTC);
+								int de = source.ErrorCodeForDeviceNumber;
+								long dn = de == 0 ? source.DeviceNumber : 0;
+								RefreshSucceeded(source.FileType, source.FileSize, source.BytesUsed, de, dn, source.InodeNumber, source.LinkCount,
+										source.CreationTimeUTC, source.LastModificationTimeUTC, source.LastChangeTimeUTC, source.LastAccessTimeUTC);
 								SetLinkTargetHint(source.LinkTargetHint);
 							} else {
 								RefreshFailed(source.ErrorCode);
