@@ -13,7 +13,7 @@
     <Optimize>true</Optimize>
     <NoWarn>0414</NoWarn>
     <DebugType>None</DebugType>
-    <Version>0.0.5</Version>
+    <Version>0.0.6</Version>
     <LangVersion>9.0</LangVersion>
     <Nullable>annotations</Nullable>
   </PropertyGroup>

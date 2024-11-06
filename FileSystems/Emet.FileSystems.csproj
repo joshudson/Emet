@@ -6,7 +6,7 @@
     <ExtrasBuildEachRuntimeIdentifier>true</ExtrasBuildEachRuntimeIdentifier>
     <Deterministic>true</Deterministic>
     <DebugType>None</DebugType>
-    <Version>0.0.5</Version>
+    <Version>0.0.6</Version>
     <LangVersion>9.0</LangVersion>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

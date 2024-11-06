@@ -44,7 +44,11 @@ namespace Emet.FileSystems {
 		///<param name="nonExtantDirectoryBehavior">What to do if the directory doesn't exist</param>
 		///<param name="followSymbolicLinks">Whether or not to follow symbolic links</param>
 		///<exception cref="System.IO.IOException">An IO error occurred accessing path</exception>
-		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes</remarks>
+		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes.
+		///GetDirectoryContents() currently returns a fully materialized enumerable on all supported
+		///platforms; the author reserves the right to change this to a streaming enumerator on a platform
+		///for which rename or delete the most recently returned entry does not destabilitze the system
+		///directory enumerator.</remarks>
 		public static IEnumerable<DirectoryEntry> GetDirectoryContents(string path,
 				NonExtantDirectoryBehavior nonExtantDirectoryBehavior = NonExtantDirectoryBehavior.Throw,
 				FollowSymbolicLinks followSymbolicLinks = FollowSymbolicLinks.Never)
@@ -149,7 +153,11 @@ namespace Emet.FileSystems {
 		///<param name="path">path to enumerate</param>
 		///<param name="followSymbolicLinks">Whether or not to follow symbolic links</param>
 		///<exception cref="System.IO.IOException">An IO error occurred accessing path</exception>
-		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes</remarks>
+		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes.
+		///GetDirectoryContentsOrThrow() currently returns a fully materialized enumerable on all supported
+		///platforms; the author reserves the right to change this to a streaming enumerator on a platform
+		///for which rename or delete the most recently returned entry does not destabilitze the system
+		///directory enumerator.</remarks>
 		public static IEnumerable<DirectoryEntry> GetDirectoryContentsOrThrow(string path,
 				FollowSymbolicLinks followSymbolicLinks = FollowSymbolicLinks.Never)
 			=> GetDirectoryContents(path, NonExtantDirectoryBehavior.Throw, followSymbolicLinks);
@@ -158,7 +166,11 @@ namespace Emet.FileSystems {
 		///<param name="path">path to enumerate</param>
 		///<param name="followSymbolicLinks">Whether or not to follow symbolic links</param>
 		///<exception cref="System.IO.IOException">An IO error occurred accessing path</exception>
-		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes</remarks>
+		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes.
+		///GetDirectoryContentsOrEmpty() currently returns a fully materialized enumerable on all supported
+		///platforms; the author reserves the right to change this to a streaming enumerator on a platform
+		///for which rename or delete the most recently returned entry does not destabilitze the system
+		///directory enumerator.</remarks>
 		public static IEnumerable<DirectoryEntry> GetDirectoryContentsOrEmpty(string path,
 				FollowSymbolicLinks followSymbolicLinks = FollowSymbolicLinks.Never)
 			=> GetDirectoryContents(path, NonExtantDirectoryBehavior.ReturnEmpty, followSymbolicLinks);
@@ -167,7 +179,11 @@ namespace Emet.FileSystems {
 		///<param name="path">path to enumerate</param>
 		///<param name="followSymbolicLinks">Whether or not to follow symbolic links</param>
 		///<exception cref="System.IO.IOException">An IO error occurred accessing path</exception>
-		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes</remarks>
+		///<remarks>Exceptions are not thrown if enumerating the directory encounters non-extant nodes.
+		///GetDirectoryContentsOrNull() currently returns a fully materialized enumerable on all supported
+		///platforms; the author reserves the right to change this to a streaming enumerator on a platform
+		///for which rename or delete the most recently returned entry does not destabilitze the system
+		///directory enumerator.</remarks>
 		public static IEnumerable<DirectoryEntry>? GetDirectoryContentsOrNull(string path,
 				FollowSymbolicLinks followSymbolicLinks = FollowSymbolicLinks.Never)
 			=> GetDirectoryContents(path, NonExtantDirectoryBehavior.ReturnNull, followSymbolicLinks);
@@ -845,8 +861,7 @@ namespace Emet.FileSystems {
 			=> new DirectoryEntry(path, FollowSymbolicLinks.Never).FileType != FileType.DoesNotExist;
 
 		// List of DirectoryEntiry; this class actually exists so that callers don't take a dependency on downcasting
-		// IEnumerable<DirectoryEntry> to List<DirectoryEntry>.  I've switched back and forth between yield return and
-		// list more than once.
+		// IEnumerable<DirectoryEntry> to List<DirectoryEntry>.
 		internal sealed class DirectoryEntryList : IEnumerable<DirectoryEntry>, IEnumerator<DirectoryEntry> {
 			private int clist;
 			private int alist;
