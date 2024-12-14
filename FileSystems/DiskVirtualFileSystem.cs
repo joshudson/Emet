@@ -60,6 +60,7 @@ namespace Emet.FileSystems {
 				}
 			}
 
+			IReadOnlyVirtualFileSystem IReadOnlyVirtualFileSystem.CreateChild(string path) => CreateChild(path, FileSystem.FollowSymbolicLinks.Never);
 			IVirtualFileSystem IVirtualFileSystem.CreateChild(string path) => CreateChild(path, FileSystem.FollowSymbolicLinks.Never);
 
 			public bool CreateDirectory(string path)
@@ -75,6 +76,9 @@ namespace Emet.FileSystems {
 				throw GetExceptionFromLastError(path, path, false, 0, true);
 #endif
 			}
+
+			public Stream OpenVirtualFile(string path, bool forAsyncAccess, int bufferSize)
+				=> OpenFile(path, FileMode.Open, FileAccess.Read, FileSystem.FollowSymbolicLinks.Always, forAsyncAccess, bufferSize);
 
 			public Stream OpenVirtualFile(string path, FileMode fileMode, FileAccess fileAccess, bool forAsyncAccess, int bufferSize)
 				=> OpenFile(path, fileMode, fileAccess, FileSystem.FollowSymbolicLinks.Always, forAsyncAccess, bufferSize);
@@ -229,6 +233,7 @@ namespace Emet.FileSystems {
 				}
 			}
 
+			IReadOnlyVirtualFileSystem IReadOnlyVirtualFileSystem.CreateChild(string path) => CreateChild(path, FileSystem.FollowSymbolicLinks.Never);
 			IVirtualFileSystem IVirtualFileSystem.CreateChild(string path) => CreateChild(path, FileSystem.FollowSymbolicLinks.Never);
 
 			public bool CreateDirectory(string path)
@@ -251,6 +256,9 @@ namespace Emet.FileSystems {
 				throw GetExceptionFromLastError(path, path, false, 0, true);
 #endif
 			}
+
+			public Stream OpenVirtualFile(string path, bool forAsyncAccess, int bufferSize)
+				=> OpenFile(path, FileMode.Open, FileAccess.Read, FileSystem.FollowSymbolicLinks.Always, forAsyncAccess, bufferSize);
 
 			public Stream OpenVirtualFile(string path, FileMode fileMode, FileAccess fileAccess, bool forAsyncAccess, int bufferSize)
 				=> OpenFile(path, fileMode, fileAccess, FileSystem.FollowSymbolicLinks.Always, forAsyncAccess, bufferSize);
@@ -428,6 +436,7 @@ namespace Emet.FileSystems {
 			public string ParentDirectoryName => "..";
 			public string RootDirectoryName => "/";
 
+			IReadOnlyVirtualFileSystem IReadOnlyVirtualFileSystem.CreateChild(string path) => CreateChild(path, FileSystem.FollowSymbolicLinks.Never);
 			IVirtualFileSystem IVirtualFileSystem.CreateChild(string path) => CreateChild(path, FileSystem.FollowSymbolicLinks.Never);
 
 			public IDiskVirtualFileSystem CreateChild(string path) => CreateChild(path, FileSystem.FollowSymbolicLinks.Never);
@@ -571,6 +580,9 @@ namespace Emet.FileSystems {
 				return nextIndex;
 			}
 			
+			public Stream OpenVirtualFile(string path, bool forAsyncAccess, int bufferSize)
+				=> OpenFile(path, FileMode.Open, FileAccess.Read, FileSystem.FollowSymbolicLinks.Always, forAsyncAccess, bufferSize);
+
 			public Stream OpenVirtualFile(string path, FileMode fileMode, FileAccess fileAccess, bool forAsyncAccess, int bufferSize)
 				=> OpenFile(path, fileMode, fileAccess, FileSystem.FollowSymbolicLinks.Always, forAsyncAccess, bufferSize);
 
@@ -905,7 +917,12 @@ namespace Emet.FileSystems {
 				directory = null;
 			}
 
+			IReadOnlyVirtualFileSystem IReadOnlyVirtualFileSystem.CreateChild(string path) => CreateChild(path);
 			IVirtualFileSystem IVirtualFileSystem.CreateChild(string path) => CreateChild(path);
+
+			public Stream OpenVirtualFile(string path, bool forAsyncAccess, int bufferSize)
+				=> OpenFile(path, FileMode.Open, FileAccess.Read, FileSystem.FollowSymbolicLinks.Always, forAsyncAccess, bufferSize);
+
 			public Stream OpenVirtualFile(string path, FileMode fileMode, FileAccess fileAccess, bool forAsyncAccess = false, int bufferSize = 4096)
 				=> OpenFile(path, fileMode, fileAccess, FileSystem.FollowSymbolicLinks.Always, forAsyncAccess, bufferSize);
 

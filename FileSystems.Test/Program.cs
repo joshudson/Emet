@@ -372,9 +372,13 @@ static class Program {
 
 	static void DeleteDirectory(string path)
 	{
+#if OS_WIN
 		var r = Microsoft.Win32.Registry.LocalMachine.OpenSubKey("SOFTWARE\\Wine", false);
 		if (r is null) Directory.Delete(path, true);
 		else FileSystem.RemoveDirectory(path, true); // Directory.Delete is *bugged* on Wine
+#else
+		Directory.Delete(path, true);
+#endif
 	}
 }
 
