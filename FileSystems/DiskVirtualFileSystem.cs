@@ -1168,8 +1168,12 @@ namespace Emet.FileSystems {
 			{
 				if (path is null) throw new ArgumentNullException("path");
 				if (path.Length == 0) throw new ArgumentOutOfRangeException("path", "path cannot be the empty string.");
+				string rpath;
 				using (var traversal = Traverse(path, false, false, out string final))
-					return FileSystem.ReadLink(final);
+					rpath = FileSystem.ReadLink(final);
+				if (rpath.Length >= 3 && (rpath[0] >= 'A' && rpath[0] <= 'Z' || rpath[0] >= 'a' && rpath[0] <= 'z') && rpath[1] == ':' && rpath[2] == '\\')
+					rpath = rpath.Substring(2);
+				return rpath;
 			}
 
 			public bool RemoveFile(string path)

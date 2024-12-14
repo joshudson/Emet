@@ -296,7 +296,7 @@ static class Program {
 		}
 		finally {
 			try {
-				Directory.Delete(testpath, true);
+				DeleteDirectory(testpath);
 			} catch (DirectoryNotFoundException) {}
 		}
 		if (fatpath is not null) {
@@ -324,7 +324,7 @@ static class Program {
 			}
 			finally {
 				try {
-					Directory.Delete(fatpath, true);
+					DeleteDirectory(fatpath);
 				} catch (DirectoryNotFoundException) {}
 			}
 		}
@@ -369,6 +369,13 @@ static class Program {
 
 	static DateTime ShearOffMilliseconds(DateTime input)
 		=> new DateTime((input.Ticks / TimeSpan.TicksPerSecond) * TimeSpan.TicksPerSecond, input.Kind);
+
+	static void DeleteDirectory(string path)
+	{
+		var r = Microsoft.Win32.Registry.LocalMachine.OpenSubKey("SOFTWARE\\Wine", false);
+		if (r is null) Directory.Delete(path, true);
+		else FileSystem.RemoveDirectory(path, true); // Directory.Delete is *bugged* on Wine
+	}
 }
 
 class AssertionFailed : Exception {

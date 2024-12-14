@@ -22,4 +22,8 @@
     <DefineConstants Condition="'$(RuntimeIdentifier)' == 'linux-x64'">$(DefineConstants);OS_LINUXX64;OSTYPE_UNIX</DefineConstants>
     <DefineConstants Condition="'$(RuntimeIdentifier)' == 'osx-x64'">$(DefineConstants);OS_MACOS64;OSTYPE_UNIX</DefineConstants>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win' Or '$(RuntimeIdentifier)' == 'win7-x86' Or '$(RuntimeIdentifier)' == 'win7-x64' Or '$(RuntimeIdentifier)' == 'win-x86' Or $(RuntimeIdentifier) == 'win-x64'">
+    <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0"></PackageReference>
+  </ItemGroup>
 </Project>

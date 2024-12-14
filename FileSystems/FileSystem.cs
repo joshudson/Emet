@@ -393,7 +393,7 @@ namespace Emet.FileSystems {
 							throw new NotSupportedException("ReadLink only works on symbolic links and junctions");
 						uint bufwanted = hdroffset + (uint)((symdata.PrintNameOffset + symdata.PrintNameLength) << 1);
 						if (bufwanted <= buflen)
-							return Marshal.PtrToStringUni(gch.AddrOfPinnedObject() + (int)hdrsize + (int)(symdata.PrintNameOffset << 1),
+							return Marshal.PtrToStringUni(gch.AddrOfPinnedObject() + (int)hdrsize + (int)symdata.PrintNameOffset,
 								symdata.PrintNameLength >> 1);
 						buflen = bufwanted;
 					} finally {
