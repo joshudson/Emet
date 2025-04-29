@@ -5,8 +5,9 @@
     <RuntimeIdentifiers>linux-x64;win;osx-x64</RuntimeIdentifiers>
     <ExtrasBuildEachRuntimeIdentifier>true</ExtrasBuildEachRuntimeIdentifier>
     <Deterministic>true</Deterministic>
+    <EnableDefaultItems>false</EnableDefaultItems>
     <DebugType>None</DebugType>
-    <Version>0.0.6</Version>
+    <Version>0.0.6.1</Version>
     <LangVersion>9.0</LangVersion>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -15,6 +16,7 @@
     <Description>Replacement File Information APIs for .NET Core supporting symbolic links</Description>
     <PackageProjectUrl>https://github.com/joshudson/Emet</PackageProjectUrl>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>emet.png</PackageIcon>
 <!--
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -25,6 +27,18 @@
   <ItemGroup>
     <None Include="../LICENSE" Pack="true" PackagePath=""/>
     <None Include="../emet.png" Pack="true" PackagePath=""/>
+    <None Include="README.md" Pack="true" PackagePath=""/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="DirectoryEntry.cs" />
+    <Compile Include="DiskVirtualFileSystem.cs" />
+    <Compile Include="FileSystem.cs" />
+    <Compile Include="FileSystemNode.cs" />
+    <Compile Include="IOErrors.cs" />
+    <Compile Include="IVirtualFileSystem.cs" />
+    <Compile Include="NativeMethods.cs" />
+    <Compile Include="Util.cs" />
   </ItemGroup>
 
   <ItemGroup>
