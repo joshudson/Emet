@@ -7,12 +7,12 @@
     <Deterministic>true</Deterministic>
     <EnableDefaultItems>false</EnableDefaultItems>
     <DebugType>None</DebugType>
-    <Version>0.0.6.1</Version>
+    <Version>0.0.6.2</Version>
     <LangVersion>9.0</LangVersion>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Authors>Joshua Hudson &lt;joshudson@gmail.com&gt;</Authors>
-    <Copyright>2018-2022,2024</Copyright>
+    <Copyright>2018-2022,2024-2025</Copyright>
     <Description>Replacement File Information APIs for .NET Core supporting symbolic links</Description>
     <PackageProjectUrl>https://github.com/joshudson/Emet</PackageProjectUrl>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>

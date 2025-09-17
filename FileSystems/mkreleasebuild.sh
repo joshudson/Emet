@@ -1,30 +1,32 @@
 #!/bin/sh
+# mkreleasebuild Copyright(C) Joshua Hudson 2025
 
-# Apparently reproducible builds actually care about build directory despite debuug mode = none
+# Apparently reproducible builds actually care about build directory despite debug mode = none
 
 # These are the build parameters; they correspond to the release build
 
 # Version must be changed in the .csproj files as well
-VERSION=0.0.6.1
+VERSION=0.0.6.2
 BUILD_PATH=/tmp/build/Emet
-SOURCE_DATE_EPOCH=`date -u +%s -d 2025-04-29T3:00:01Z`
+SOURCE_DATE_EPOCH=`date -u +%s -d 2025-09-17T02:46:01Z`
 
 export SOURCE_DATE_EPOCH
 
-# One tool isn't ready for external deploy yet
-
-if [ ! -f "$1"/Kuinox.NupkgDeterministicator.csproj ]
-then	echo "USAGE: $0 /path/to/Kuionx.NupkgDeterministicator"
-	exit 1
-fi
-
-if grep -q SOURCE_DATE_EPOCH "$1"/Program.cs
-then	:
-else	echo "Error: Kuionx.NupkgDterministicator does not support SOURCE_DATE_EPOCH"
-	exit 1
-fi
-
 set -e
+
+netbuildsequence()
+{
+	# This is one of the more frustrating things I've to deal with in quite awhile.
+	# Apparently the process that generates the .xml file is completely broken.
+	dotnet build -c Release Emet.FileSystems.csproj
+
+	# But this generates it
+	dotnet build -c Release Emet.FileSystems.ref.csproj
+
+	# So here we go and run a custom Nuget packager
+	# There's so many bugs in the stock one anyway.
+	env -C "$SRCPWD" dotnet run --project ../NugetPacker/NugetPacker.csproj -- "$BUILD_PATH/FileSystems/Emet.FileSystems.csproj"
+}
 
 SRCPWD="`pwd`"
 mkdir -p $BUILD_PATH
@@ -34,16 +36,14 @@ cd $BUILD_PATH
 nasm -f bin -o patchdosstub patchdosstub.asm
 chmod +x patchdosstub
 cd FileSystems
-dotnet pack -c Release Emet.FileSystems.csproj
+netbuildsequence
 cd "$SRCPWD"
-env -C "$1" dotnet run $BUILD_PATH/FileSystems/bin/Release/Emet.FileSystems.$VERSION.nupkg
 cp $BUILD_PATH/FileSystems/bin/Release/Emet.FileSystems.$VERSION.nupkg bin/Release/Emet.FileSystems.$VERSION.nupkg
 cd $BUILD_PATH
 cd FileSystems
 mv bin binx
 mv obj objx
-dotnet pack -c Release Emet.FileSystems.csproj
-env -C "$1" dotnet run $BUILD_PATH/FileSystems/bin/Release/Emet.FileSystems.$VERSION.nupkg
+netbuildsequence
 cd "$SRCPWD"
 diff $BUILD_PATH/FileSystems/bin/Release/Emet.FileSystems.$VERSION.nupkg bin/Release/Emet.FileSystems.$VERSION.nupkg
 rm -rf $BUILD_PATH

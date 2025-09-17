@@ -281,7 +281,7 @@ namespace Emet.FileSystems {
 
 		private SafeFileHandle reference;
 		private int errorCode;
-		protected internal FileType fileType;
+		private protected FileType fileType;
 		private long fileSize;
 		private long bytesUsed;
 		private long deviceNumber;
@@ -377,7 +377,7 @@ namespace Emet.FileSystems {
 #endif
 		///<summary>Returns the identifier of the device the file is on</summary>
 		///<exception cref="System.IO.IOException">A disk IO exception occurred resolving the node, or the device number could not be retrieved</exception>
-		///<remarks>Some network filesystems do not provide device numbers and raise an error instead; the error is thrown from here in that case</exception>
+		///<remarks>Some network filesystems do not provide device numbers and raise an error instead; the error is thrown from here in that case</remarks>
 		public long DeviceNumber { get {
 #if OS_WIN
 				if (!loaded2) _Refresh();

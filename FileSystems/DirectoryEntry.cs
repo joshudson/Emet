@@ -23,7 +23,13 @@ namespace Emet.FileSystems {
 		public DirectoryEntry(string directoryname, string name, FileSystem.FollowSymbolicLinks symbolicLinkBehavior)
 			: this(directoryname, name, symbolicLinkBehavior, FileType.NodeHintNotAvailable, FileType.LinkTargetHintNotAvailable) {}
 
-		internal DirectoryEntry(string path, FileSystem.FollowSymbolicLinks symbolicLinkBehavior, FileType type, FileType hint) : base(null)
+		///<summary>Constructs a new directory entry from a (virtual) file path</summary>
+		///<param name="path">The path to the directory entry to inspect</param>
+		///<param name="symbolicLinkBehavior">What to do if path is a symbolic link</param>
+		///<param name="type">The type of node this DirectroyEntry refers to</param>
+		///<param name="hint">The type of node this symbolic link refers to, pass LinkTargetHintNotAvailable if known to not be a symbolic link</param>
+		///<remarks>This constructor is intended for virutal filesystems; virtual filesystems must override _Refresh()</remarks>
+		protected internal DirectoryEntry(string path, FileSystem.FollowSymbolicLinks symbolicLinkBehavior, FileType type, FileType hint) : base(null)
 		{
 			if (path is null) throw new ArgumentNullException("path");
 			if (path.Length == 0) throw new ArgumentException("path cannot be the empty string");
@@ -33,7 +39,14 @@ namespace Emet.FileSystems {
 			this.hint = hint;
 		}
 
-		internal DirectoryEntry(string directoryname, string name, FileSystem.FollowSymbolicLinks symbolicLinkBehavior, FileType type, FileType hint) : base(null)
+		///<summary>Constructs a new directory entry from a (virtual) file path</summary>
+		///<param name="directoryname">The name of the directory containing the entry to inspect</param>
+		///<param name="name">The name of the node to inspect</param>
+		///<param name="symbolicLinkBehavior">What to do if path is a symbolic link</param>
+		///<param name="type">The type of node this DirectroyEntry refers to</param>
+		///<param name="hint">The type of node this symbolic link refers to, pass LinkTargetHintNotAvailable if known to not be a symbolic link</param>
+		///<remarks>This constructor is intended for virutal filesystems; virtual filesystems must override _Refresh()</remarks>
+		protected internal DirectoryEntry(string directoryname, string name, FileSystem.FollowSymbolicLinks symbolicLinkBehavior, FileType type, FileType hint) : base(null)
 		{
 			if (string.IsNullOrEmpty(directoryname)) directoryname = CurrentDirectoryName;
 			if (name is null) throw new ArgumentNullException("name");
