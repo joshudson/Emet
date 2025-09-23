@@ -94,7 +94,7 @@ if (version is null) {
 byte[] GenerateNuspec()
 {
 	var sb = new StringBuilder();
-	sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\">\n");
+	sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
 	sb.Append("<package xmlns=\"http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd\">\n");
 	sb.Append("  <metadata>\n");
 	sb.Append("    <id>").Append(id).Append("</id>\n");
@@ -156,7 +156,7 @@ byte[] GenerateContentTypes()
 	seen.Add("rels");
 	seen.Add("psmdcp");
 	seen.Add("xml");
-	sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\">\n");
+	sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
 	sb.Append("<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n");
 	sb.Append("  <Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n");
 	sb.Append("  <Default Extension=\"psmdcp\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>\n");
@@ -189,7 +189,7 @@ byte[] GenerateContentTypes()
 byte[] GeneratePsmdcp()
 {
 	var sb = new StringBuilder();
-	sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\">\n");
+	sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
 	sb.Append("<coreProperties xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\">\n");
 	if (authors is not null) sb.Append("  <dc:creator>").Append(authors).Append("</dc:creator>\n");
 	if (description is not null) sb.Append("  <dc:description>").Append(description).Append("</dc:description>\n");
@@ -204,7 +204,7 @@ byte[] GeneratePsmdcp()
 byte[] GenerateRels(string Ridentifier, string pidentifier)
 {
 	var sb = new StringBuilder();
-	sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\">\n");
+	sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
 	sb.Append("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n");
 	sb.Append(" <Relationship Type=\"http://schemas.microsoft.com/packaging/2010/07/manifest\" Target=\"/").Append(id);
 	sb.Append(".nuspec\" Id=\"").Append(Ridentifier).Append("\"/>\n");

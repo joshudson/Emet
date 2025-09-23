@@ -8,7 +8,7 @@
 # Version must be changed in the .csproj files as well
 VERSION=0.0.6.2
 BUILD_PATH=/tmp/build/Emet
-SOURCE_DATE_EPOCH=`date -u +%s -d 2025-09-17T02:46:01Z`
+SOURCE_DATE_EPOCH=`date -u +%s -d 2025-09-23T12:23:39Z`
 
 export SOURCE_DATE_EPOCH
 
